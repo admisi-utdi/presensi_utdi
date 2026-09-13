@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Si-PREDI - Sistem Informasi Presensi Digital UTDI</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div id="toast" class="toast"></div>
+
+  <!-- ================= LOGIN GOOGLE ================= -->
+  <!-- Ganti dari login otomatis via Google Workspace (bawaan Apps Script) jadi
+       login manual pakai tombol Google Identity Services, karena Vercel bukan
+       lagi bagian dari ekosistem Apps Script yang otomatis tahu siapa yang login. -->
+  <div class="login-wrap" id="login-screen">
+    <div class="login-card">
+      <div class="logo-badge">S</div>
+      <h2>Si-PREDI</h2>
+      <p>Sistem Informasi Presensi Digital UTDI.<br>Login pakai akun Google UTDI Anda untuk masuk.</p>
+      <div id="gis-button-wrap"></div>
+      <p class="login-error" id="login-error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Loading overlay: tampil setiap kali ada request ke server -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <span id="loading-text">Memproses...</span>
+    </div>
+  </div>
+
+  <!-- Result modal: dipakai konsisten untuk semua notifikasi sukses/gagal -->
+  <div class="result-modal-backdrop" id="result-modal-backdrop" onclick="if(event.target===this) closeResultModal()">
+    <div class="result-modal">
+      <div class="result-icon" id="result-icon">✓</div>
+      <h4 id="result-title">Berhasil</h4>
+      <p id="result-message"></p>
+      <button class="btn" onclick="closeResultModal()">OK</button>
+    </div>
+  </div>
+
+  <!-- Confirm modal: pengganti confirm() bawaan browser, dipakai konsisten untuk semua aksi berisiko (hapus dll) -->
+  <div class="result-modal-backdrop" id="confirm-modal-backdrop" onclick="if(event.target===this) closeConfirmModal()">
+    <div class="result-modal">
+      <div class="result-icon warn" id="confirm-icon">?</div>
+      <h4 id="confirm-title">Konfirmasi</h4>
+      <p id="confirm-message"></p>
+      <div class="row" style="justify-content:center;gap:10px;">
+        <button class="btn secondary" onclick="closeConfirmModal()">Batal</button>
+        <button class="btn danger" id="confirm-ok-btn" onclick="confirmModalOk_()">Ya, Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger-confirm modal: untuk aksi HAPUS SEMUA yang tidak bisa dibatalkan — admin
+       wajib mengetik ulang kata konfirmasi persis sebelum tombol hapusnya aktif. -->
+  <div class="result-modal-backdrop" id="danger-modal-backdrop" onclick="if(event.target===this) closeDangerModal()">
+    <div class="result-modal">
+      <div class="result-icon error" id="danger-icon">⚠</div>
+      <h4 id="danger-title">Hapus Semua</h4>
+      <p id="danger-message"></p>
+      <p style="font-size:12.5px;color:#6b7280;margin:0 0 10px;">
+        Ketik <strong id="danger-word-label"></strong> di bawah ini untuk mengonfirmasi. Aksi ini <strong>tidak bisa dibatalkan</strong>.
+      </p>
+      <input id="danger-confirm-input" autocomplete="off" style="margin-bottom:14px;" oninput="onDangerInputChange_()">
+      <div class="row" style="justify-content:center;gap:10px;">
+        <button class="btn secondary" onclick="closeDangerModal()">Batal</button>
+        <button class="btn danger" id="danger-ok-btn" onclick="dangerModalOk_()" disabled>Ya, Hapus Semua</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app" id="app-shell" hidden>
+    <div class="sidebar">
+      <div class="brand">
+        <div class="logo-badge">S</div>
+        <div class="brand-text">Si-PREDI
+          <small id="user-email"></small>
+        </div>
+      </div>
+      <div class="navitem active" data-page="dashboard">📊 Dashboard</div>
+      <div class="navitem" data-page="events">📅 Kelola Event</div>
+      <div class="navitem" data-page="peserta">👥 Kelola Peserta</div>
+      <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
+      <div class="navitem" data-page="admin">🔑 Kelola Admin</div>
+      <div class="userbox">
+        <strong>Si-PREDI - Sistem Informasi Presensi Digital UTDI</strong>
+        Kuindra Iriyanta<br>
+        <a href="#" onclick="logout(); return false;" style="color:#c3e860;">Keluar</a>
+      </div>
+    </div>
+
+    <div class="main">
+
+      <!-- ================= DASHBOARD ================= -->
+      <div class="page active" id="page-dashboard">
+        <p class="eyebrow">Ringkasan</p>
+        <h1>Dashboard</h1>
+        <p class="subtitle">Ringkasan seluruh event dan kehadiran.</p>
+        <div id="dashboard-content"></div>
+      </div>
+
+      <!-- ================= EVENTS ================= -->
+      <div class="page" id="page-events">
+        <div class="row-between">
+          <div>
+            <p class="eyebrow">Acara</p>
+            <h1>Kelola Event</h1>
+            <p class="subtitle">Buat & atur acara: nama, tanggal, jam presensi.</p>
+          </div>
+          <div class="row">
+            <button class="btn danger sm" onclick="hapusSemuaEvent()">🗑 Hapus Semua Event</button>
+            <button class="btn" onclick="openEventModal()">+ Event Baru</button>
+          </div>
+        </div>
+        <div class="card">
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Nama Event</th><th>Tanggal</th><th>Jam</th><th>Lokasi</th><th>Status</th><th></th></tr></thead>
+            <tbody id="events-table"></tbody>
+          </table>
+          <div id="events-empty" class="empty" style="display:none;">Belum ada event. Klik "+ Event Baru" untuk membuat.</div>
+        </div>
+      </div>
+
+      <!-- ================= PESERTA ================= -->
+      <div class="page" id="page-peserta">
+        <p class="eyebrow">Peserta</p>
+        <h1>Kelola Peserta</h1>
+        <p class="subtitle">Pilih event, lalu tambahkan peserta & kirim kode presensi via email.</p>
+
+        <div class="card">
+          <label>Pilih Event</label>
+          <select id="peserta-event-select" onchange="loadPeserta()"></select>
+        </div>
+
+        <div class="event-banner" id="peserta-event-banner">
+          <div>
+            <div class="eb-label">Event Aktif</div>
+            <div class="eb-name" id="peserta-eb-name">-</div>
+            <div class="eb-meta" id="peserta-eb-meta"></div>
+          </div>
+          <div class="eb-badge" id="peserta-eb-badge"></div>
+        </div>
+
+        <div class="card">
+          <div class="row-between">
+            <h3 style="margin:0;">Daftar Peserta</h3>
+            <div class="row">
+              <select id="peserta-filter-kirim" onchange="applyPesertaFilter()" style="width:auto;min-width:170px;">
+                <option value="">Semua Status Kirim</option>
+                <option value="ya">✅ Sudah Terkirim</option>
+                <option value="tidak">✉️ Belum Terkirim</option>
+              </select>
+              <button class="btn danger sm" onclick="hapusSemuaPeserta()">🗑 Hapus Semua Peserta</button>
+              <button class="btn secondary sm" onclick="openImportModal()">Import Massal</button>
+              <button class="btn secondary sm" onclick="kirimSemuaEmail()">Kirim Semua Kode (belum terkirim)</button>
+              <button class="btn sm" onclick="openParticipantModal()">+ Tambah Peserta</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Peserta</th><th>Event</th><th>Kode</th><th>Status Hadir</th><th>Email Terkirim</th><th></th></tr></thead>
+            <tbody id="peserta-table"></tbody>
+          </table>
+          <div id="peserta-empty" class="empty" style="display:none;">Belum ada peserta di event ini.</div>
+        </div>
+      </div>
+
+      <!-- ================= PRESENSI ================= -->
+      <div class="page" id="page-presensi">
+        <p class="eyebrow">Meja Presensi</p>
+        <h1>Presensi Pintu Masuk</h1>
+        <p class="subtitle">Pilih event yang sedang berlangsung, lalu gunakan mode ketik atau scan QR.</p>
+
+        <div class="card">
+          <label>Event Aktif</label>
+          <select id="presensi-event-select" onchange="onPresensiEventChange()"></select>
+        </div>
+
+        <div class="event-banner" id="presensi-event-banner">
+          <div>
+            <div class="eb-label">Event Aktif</div>
+            <div class="eb-name" id="presensi-eb-name">-</div>
+            <div class="eb-meta" id="presensi-eb-meta"></div>
+          </div>
+          <div class="eb-badge" id="presensi-eb-badge"></div>
+        </div>
+
+        <div class="presensi-layout">
+          <div class="card presensi-scan-col">
+            <div class="mode-toggle">
+              <button class="btn" id="btn-mode-ketik" onclick="setMode('ketik')">⌨️ Mode Ketik</button>
+              <button class="btn secondary" id="btn-mode-scan" onclick="setMode('scan')">📷 Mode Scan</button>
+              <button class="btn secondary" id="btn-mode-cari" onclick="setMode('cari')">🔎 Cari Nama</button>
+            </div>
+
+            <div class="scan-box">
+              <div class="scan-panel" id="panel-ketik">
+                <label>Scanner Barcode / QR Gun</label>
+                <input id="input-scanner" placeholder="Arahkan & tembak scanner ke sini..." autofocus autocomplete="off"
+                  oninput="onScannerInput()" onkeydown="onScannerKeydown(event)">
+                <p class="field-hint">Otomatis tercatat begitu kode terbaca — operator tidak perlu menekan Enter atau tombol apa pun.</p>
+
+                <div class="manual-input-block">
+                  <label>Input Manual (ketik lalu tekan Enter)</label>
+                  <div class="row" style="flex-wrap:nowrap;">
+                    <input id="input-kode" placeholder="Contoh: A93KX0" autocomplete="off" style="flex:1;"
+                      onkeydown="if(event.key==='Enter'){ event.preventDefault(); submitKetik(); }">
+                    <button class="btn" onclick="submitKetik()">Presensi</button>
+                  </div>
+                </div>
+              </div>
+              <div class="scan-panel" id="panel-scan" style="display:none;">
+                <div id="camera-select-wrap" style="display:none;margin-bottom:12px;">
+                  <label>Pilih Kamera</label>
+                  <select id="camera-select" onchange="onCameraChange()"></select>
+                  <p class="field-hint">Kalau ada lebih dari 1 kamera (mis. webcam laptop + webcam USB), pilih di sini kamera mana yang dipakai untuk scan.</p>
+                </div>
+                <div id="qr-reader"></div>
+                <p style="font-size:12px;color:#6b7280;">Arahkan kamera ke QR code peserta.</p>
+              </div>
+              <div class="scan-panel" id="panel-cari" style="display:none;">
+                <label>Cari Nama Peserta</label>
+                <input id="input-cari-nama" placeholder="Ketik minimal 2 huruf nama tamu..." autocomplete="off" oninput="onCariNamaInput()">
+                <p class="field-hint">Dipakai kalau tamu lupa membawa email / tidak tahu kode presensinya. Cari namanya, lalu klik "Presensi" pada baris yang sesuai. Pencarian hanya mencakup peserta pada event yang sedang aktif.</p>
+                <div id="cari-nama-hasil"></div>
+              </div>
+            </div>
+
+            <div id="presensi-result"></div>
+          </div>
+
+          <div class="presensi-recap-col">
+            <div class="grid-stats" id="presensi-recap-stats" style="grid-template-columns:repeat(3,1fr);"></div>
+            <div class="card">
+              <div class="row-between" style="margin-bottom:10px;">
+                <h3 style="margin:0;">Baru saja hadir</h3>
+                <button class="btn secondary sm" onclick="loadPresensiRecap()">🔄 Refresh</button>
+              </div>
+              <div id="presensi-recent-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ADMIN ================= -->
+      <div class="page" id="page-admin">
+        <div class="row-between">
+          <div>
+            <p class="eyebrow">Akses</p>
+            <h1>Kelola Admin</h1>
+            <p class="subtitle">Akun yang bisa mengakses dashboard ini.</p>
+          </div>
+          <button class="btn" onclick="openAdminModal()">+ Tambah Admin</button>
+        </div>
+        <div class="card">
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Email</th><th>Nama</th><th>Status</th><th></th></tr></thead>
+            <tbody id="admin-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ MODAL: EVENT ============ -->
+  <div class="modal-backdrop" id="modal-event">
+    <div class="modal">
+      <h3 id="event-modal-title">Event Baru</h3>
+      <input type="hidden" id="event-id">
+      <label>Nama Event</label>
+      <input id="event-nama" placeholder="Contoh: Rapat Kerja LPM 2026">
+      <label>Tanggal</label>
+      <input id="event-tanggal" type="date">
+      <label>Jam Mulai</label>
+      <input id="event-jam-mulai" type="time">
+      <label>Jam Selesai</label>
+      <input id="event-jam-selesai" type="time">
+      <label>Lokasi</label>
+      <input id="event-lokasi" placeholder="Contoh: Aula Kampus UTDI">
+      <label>Deskripsi / Informasi Kegiatan</label>
+      <textarea id="event-deskripsi" rows="4" placeholder="Contoh: Rangkaian acara diawali sambutan Rektor, dilanjutkan sesi materi utama dan diskusi panel. Peserta wajib membawa laptop dan berpakaian rapi."></textarea>
+      <p style="font-size:11.5px;color:#6b7280;margin:4px 0 0;">Teks ini akan ikut ditampilkan di email kode presensi peserta, jadi email-nya sekaligus berfungsi sebagai undangan.</p>
+      <div class="row" style="margin-top:18px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeModal('modal-event')">Batal</button>
+        <button class="btn" onclick="saveEvent()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: PESERTA ============ -->
+  <div class="modal-backdrop" id="modal-peserta">
+    <div class="modal">
+      <h3>Tambah Peserta</h3>
+      <label>Nama</label>
+      <input id="peserta-nama" placeholder="Nama peserta">
+      <label>Email</label>
+      <input id="peserta-email" placeholder="email@utdi.ac.id">
+      <div class="row" style="margin-top:18px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeModal('modal-peserta')">Batal</button>
+        <button class="btn" onclick="saveParticipant()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: IMPORT MASSAL ============ -->
+  <div class="modal-backdrop" id="modal-import">
+    <div class="modal">
+      <h3>Import Peserta Massal</h3>
+
+      <div class="card" style="background:#f7faf3;padding:14px;margin-bottom:14px;">
+        <div class="row-between" style="margin-bottom:0;align-items:flex-start;">
+          <div>
+            <strong style="font-size:13px;">1. Unduh template CSV</strong>
+            <p style="font-size:12px;color:#6b7280;margin:4px 0 0;">Isi kolom Nama & Email sesuai contoh, lalu simpan.</p>
+          </div>
+          <!-- Dulu ini lewat endpoint doGet(?download=...) di Apps Script; sekarang
+               cukup file statis biasa di Vercel, jadi tidak perlu round-trip ke server. -->
+          <a class="btn secondary sm" href="template_peserta.csv" download="template_peserta.csv">⬇ Unduh Template</a>
+        </div>
+      </div>
+
+      <div class="card" style="background:#f7faf3;padding:14px;margin-bottom:14px;">
+        <strong style="font-size:13px;">2. Unggah file CSV</strong>
+        <p style="font-size:12px;color:#6b7280;margin:4px 0 8px;">Pilih file CSV yang sudah diisi (format: <code>Nama,Email</code>).</p>
+        <input type="file" id="import-file" accept=".csv,text/csv" onchange="handleCsvFile(event)">
+      </div>
+
+      <label>Atau tempel manual di sini</label>
+      <textarea id="import-text" rows="6" placeholder="Budi Santoso, budi@email.com&#10;Siti Aminah, siti@email.com"></textarea>
+      <div class="row" style="margin-top:18px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeModal('modal-import')">Batal</button>
+        <button class="btn" onclick="submitImport()">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: ADMIN ============ -->
+  <div class="modal-backdrop" id="modal-admin">
+    <div class="modal">
+      <h3>Tambah Admin</h3>
+      <label>Email</label>
+      <input id="admin-email" placeholder="email@utdi.ac.id">
+      <label>Nama</label>
+      <input id="admin-nama" placeholder="Nama admin">
+      <div class="row" style="margin-top:18px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeModal('modal-admin')">Batal</button>
+        <button class="btn" onclick="saveAdmin()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
