@@ -51,7 +51,14 @@ async function postToAppsScript(payload) {
   for (let hop = 0; hop < maxHops; hop++) {
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+        // Beberapa permintaan server-ke-server tanpa User-Agent seperti browser
+        // sungguhan bisa dianggap mencurigakan oleh Google dan dibalas dengan
+        // halaman verifikasi/HTML alih-alih menjalankan skrip. User-Agent di
+        // bawah ini meniru browser biasa supaya request diperlakukan normal.
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      },
       body: body,
       redirect: 'manual'
     });
@@ -65,12 +72,12 @@ async function postToAppsScript(payload) {
 
     const text = await resp.text();
     if (!resp.ok) {
-      throw new Error('Apps Script membalas status ' + resp.status + ': ' + text.slice(0, 300));
+      throw new Error('Apps Script membalas status ' + resp.status + ': ' + text.slice(0, 800));
     }
     try {
       return JSON.parse(text);
     } catch (e) {
-      throw new Error('Respons Apps Script bukan JSON valid (kemungkinan URL GAS_WEBAPP_URL salah, atau butuh redeploy): ' + text.slice(0, 300));
+      throw new Error('Respons Apps Script bukan JSON valid (kemungkinan URL GAS_WEBAPP_URL salah, atau butuh redeploy): ' + text.slice(0, 800));
     }
   }
   throw new Error('Terlalu banyak redirect saat memanggil Apps Script.');
