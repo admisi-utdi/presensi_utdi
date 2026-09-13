@@ -224,6 +224,58 @@
   .result-modal p { margin: 0 0 20px; font-size: 13px; color: var(--muted); line-height: 1.5; }
   .result-modal .btn { width: 100%; justify-content: center; }
 
+/* ===== Responsif HP / layar sempit ===== */
+@media (max-width: 860px) {
+  .app { flex-direction: column; min-height: auto; }
+
+  .sidebar {
+    width: 100%; flex-direction: row; align-items: center; padding: 10px 12px;
+    gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .sidebar .brand { border-bottom: none; margin-bottom: 0; padding: 0 10px 0 2px; flex-shrink: 0; }
+  .sidebar .brand .brand-text { display: none; }
+  .navitem {
+    flex-shrink: 0; white-space: nowrap; margin-bottom: 0; padding: 9px 12px; font-size: 12.5px;
+  }
+  .sidebar .userbox {
+    margin-top: 0; margin-left: auto; border-top: none; padding: 0 4px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 8px; line-height: 1.3;
+  }
+  .sidebar .userbox strong { display: none; }
+
+  .main { padding: 18px 14px; max-width: 100%; }
+  h1 { font-size: 19px; }
+
+  .grid-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat { padding: 14px; }
+  .stat .num { font-size: 22px; }
+
+  .card { padding: 16px; border-radius: 14px; }
+
+  /* Tabel tetap bisa discroll ke samping tanpa merusak layout kartu */
+  .card:has(table) { overflow-x: auto; }
+  table { min-width: 480px; }
+
+  .row-between { flex-wrap: wrap; gap: 10px; }
+  .presensi-layout { gap: 14px; }
+  .presensi-scan-col, .presensi-recap-col { min-width: 100%; flex-basis: 100%; }
+
+  .scan-box { gap: 16px; }
+  .scan-panel { min-width: 100%; }
+  #qr-reader { max-width: 100%; }
+
+  .modal { width: 100%; padding: 20px; }
+  .result-modal { width: 92vw; }
+
+  .toast { left: 12px; right: 12px; top: 12px; }
+}
+
+@media (max-width: 420px) {
+  .grid-stats { grid-template-columns: 1fr 1fr; }
+  .btn { padding: 10px 14px; font-size: 12.5px; }
+  .login-card { padding: 28px 22px; }
+}
+
 /* ===== Layar Login Google (khusus versi Vercel, tidak ada di versi Apps Script) ===== */
 .login-wrap {
   min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--sidebar);
