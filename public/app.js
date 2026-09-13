@@ -503,8 +503,18 @@ function renderPeserta(list) {
   document.getElementById('peserta-table').innerHTML = list.map(function (p, i) {
     const hadir = p.STATUS_HADIR === 'Hadir';
     const terkirim = p.EMAIL_TERKIRIM === 'Ya';
+    const viaLink = hadir && p.METODE === 'Link Email';
     const emailBtnLabel = terkirim ? '↻ Kirim Ulang' : '✉ Kirim Email';
     const emailBtnClass = terkirim ? 'btn secondary sm' : 'btn sm';
+    // Kolom ini KHUSUS soal email undangan berisi kode+QR (dipakai buat presensi
+    // Scan/Ketik di pintu masuk) — terpisah dari email "Link Presensi" (menu
+    // Presensi via Email). Kalau peserta ternyata sudah hadir lewat Link Presensi,
+    // "Belum Terkirim" di sini jangan dibaca sebagai anomali (bukan berarti dia
+    // hadir tanpa diundang) — cukup berarti email kode+QR itu memang belum/tidak
+    // dikirim, karena dia presensi lewat jalur lain.
+    const emailBadge = viaLink
+      ? '<span class="badge" style="background:#eef2f6;color:#64748b;">Via Link Presensi</span>'
+      : '<span class="badge ' + (terkirim ? 'terkirim' : 'belum-kirim') + '">' + (terkirim ? 'Sudah Terkirim' : 'Belum Terkirim') + '</span>';
     return '<tr>' +
       '<td>' + (i + 1) + '</td>' +
       '<td>' + avatarChip(p.NAMA, p.EMAIL) + '</td>' +
@@ -512,7 +522,7 @@ function renderPeserta(list) {
       '<td><code>' + esc(p.KODE_PRESENSI) + '</code></td>' +
       '<td><span class="badge ' + (hadir ? 'hadir' : 'belum') + '">' + p.STATUS_HADIR + '</span></td>' +
       '<td>' + (hadir ? esc(p.DICATAT_OLEH || '-') : '<span style="color:#9ca3af;">-</span>') + '</td>' +
-      '<td><span class="badge ' + (terkirim ? 'terkirim' : 'belum-kirim') + '">' + (terkirim ? 'Sudah Terkirim' : 'Belum Terkirim') + '</span></td>' +
+      '<td>' + emailBadge + '</td>' +
       '<td class="row">' +
         '<button class="' + emailBtnClass + '" onclick="kirimSatuEmail(\'' + p.ID_PESERTA + '\')">' + emailBtnLabel + '</button>' +
         '<button class="btn danger sm" onclick="removeParticipant(\'' + p.ID_PESERTA + '\')">Hapus</button>' +
