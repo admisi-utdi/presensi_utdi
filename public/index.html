@@ -84,11 +84,11 @@
           <small id="user-email"></small>
         </div>
       </div>
-      <div class="navitem active" data-page="dashboard">📊 Dashboard</div>
-      <div class="navitem" data-page="events">📅 Kelola Event</div>
-      <div class="navitem" data-page="peserta">👥 Kelola Peserta</div>
+      <div class="navitem active full-admin-only" data-page="dashboard">📊 Dashboard</div>
+      <div class="navitem full-admin-only" data-page="events">📅 Kelola Event</div>
+      <div class="navitem full-admin-only" data-page="peserta">👥 Kelola Peserta</div>
       <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
-      <div class="navitem" data-page="admin">🔑 Kelola Admin</div>
+      <div class="navitem full-admin-only" data-page="admin">🔑 Kelola Admin</div>
       <div class="userbox">
         <strong>Si-PREDI - Sistem Informasi Presensi Digital UTDI</strong>
         Kuindra Iriyanta<br>
@@ -349,6 +349,12 @@
       <input id="admin-email" placeholder="email@utdi.ac.id">
       <label>Nama</label>
       <input id="admin-nama" placeholder="Nama admin">
+      <label>Peran</label>
+      <select id="admin-role">
+        <option value="Admin">Admin (akses penuh)</option>
+        <option value="Operator">Operator (hanya Presensi/Scan)</option>
+      </select>
+      <p class="field-hint">Operator cuma bisa buka menu Presensi (Pintu Masuk) untuk scan/input kode — tidak bisa kelola event, peserta, atau admin lain.</p>
       <div class="row" style="margin-top:18px;justify-content:flex-end;">
         <button class="btn secondary" onclick="closeModal('modal-admin')">Batal</button>
         <button class="btn" onclick="saveAdmin()">Simpan</button>

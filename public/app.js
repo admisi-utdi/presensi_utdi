@@ -82,11 +82,17 @@ function verifySessionAndEnter_() {
       return;
     }
     currentUserEmail_ = info.email;
+    currentUserRole_ = info.role || 'Admin';
     sessionStorage.setItem('sipredi_email', currentUserEmail_);
     document.getElementById('login-screen').hidden = true;
     document.getElementById('app-shell').hidden = false;
     document.getElementById('user-email').textContent = currentUserEmail_;
-    loadDashboard();
+    applyRoleRestrictions_();
+    if (currentUserRole_ === 'Operator') {
+      showPage('presensi');
+    } else {
+      loadDashboard();
+    }
   }).catch(function (err) {
     hideLoading();
     showLoginScreen_('Gagal memeriksa sesi: ' + (err.message || err));
@@ -97,6 +103,20 @@ let currentEventId = null;   // event yang dipilih di halaman Peserta
 let scanEventId = null;      // event yang dipilih di halaman Presensi
 let html5QrCode = null;
 let currentMode = 'ketik';
+let currentUserRole_ = 'Admin'; // 'Admin' (akses penuh) atau 'Operator' (hanya Presensi/Scan)
+
+/**
+ * Operator hanya boleh melihat & membuka menu Presensi (Pintu Masuk) — menu
+ * lain (Dashboard, Kelola Event, Kelola Peserta, Kelola Admin) disembunyikan
+ * dari sidebar. Ini pelengkap tampilan; pembatasan yang SEBENARNYA tetap
+ * dijaga di server (lihat requireFullAdmin_ di GasApi.gs/AdminService.gs).
+ */
+function applyRoleRestrictions_() {
+  const isOperator = currentUserRole_ === 'Operator';
+  document.querySelectorAll('.navitem.full-admin-only').forEach(function (el) {
+    el.hidden = isOperator;
+  });
+}
 let allEventsCache = [];
 let resultAutoTimer = null;
 
@@ -166,6 +186,41 @@ function showResultModal(type, title, message, autoCloseMs) {
 function closeResultModal() {
   document.getElementById('result-modal-backdrop').classList.remove('open');
   if (resultAutoTimer) { clearTimeout(resultAutoTimer); resultAutoTimer = null; }
+  // Kalau modal ini yang menghentikan sementara kamera scan (lihat
+  // showScanResultModal_), lanjutkan lagi kamera begitu modal ditutup.
+  if (html5QrCode && scannerPausedForModal_) {
+    scannerPausedForModal_ = false;
+    try { html5QrCode.resume(); } catch (e) { /* abaikan kalau scanner sudah berhenti total */ }
+  }
+}
+
+let scannerPausedForModal_ = false;
+
+/**
+ * Notifikasi hasil scan yang MENONJOL (modal penuh, harus diklik OK) supaya
+ * operator tidak sampai kelewat lihat status sukses/gagal — sebelumnya cuma
+ * kotak kecil di bawah kamera yang gampang tidak disadari di layar HP.
+ * Kamera dijeda otomatis selama modal terbuka supaya tidak nge-scan lagi
+ * sebelum operator menekan OK.
+ */
+function showScanResultModal_(res) {
+  if (html5QrCode) {
+    try { html5QrCode.pause(true); scannerPausedForModal_ = true; } catch (e) { /* kamera mungkin belum aktif */ }
+  }
+  if (res.ok) {
+    showResultModal('success', '✅ ' + (res.nama || 'Berhasil'),
+      (res.namaEvent ? res.namaEvent + ' — ' : '') + 'Presensi tercatat.');
+  } else if (res.duplicateScan) {
+    showResultModal('warn', 'Tunggu Sebentar', res.message);
+  } else if (res.outsideWindow) {
+    showResultModal('warn', 'Belum/Sudah Waktunya', res.message);
+  } else if (res.eventMismatch) {
+    showResultModal('warn', 'Event Tidak Sesuai', res.message);
+  } else if (res.sudahHadir) {
+    showResultModal('warn', res.nama || 'Sudah Presensi', 'Sudah presensi sebelumnya.');
+  } else {
+    showResultModal('error', 'Gagal', res.message);
+  }
 }
 function showSuccess(message, title) { showResultModal('success', title || 'Berhasil', message, 1800); }
 function showErrorModal(err) { showResultModal('error', 'Gagal', (err && err.message) ? err.message : String(err)); }
@@ -774,6 +829,11 @@ function processCheckIn(kode, metode) {
 
   const now = Date.now();
   if (normalized === lastScanCode_ && (now - lastScanTime_) < SCAN_DUPLICATE_WINDOW_MS) {
+    // Sengaja TIDAK menampilkan modal untuk kasus ini (cukup kotak kecil) —
+    // ini bisa terpicu berkali-kali sangat cepat karena kamera terus
+    // mendeteksi QR yang sama selama beberapa frame berturut-turut sebelum
+    // operator sempat menjauhkan kamera; modal yang muncul-hilang berkali-
+    // kali dalam hitungan detik akan lebih mengganggu daripada membantu.
     renderPresensiResult({
       ok: false,
       duplicateScan: true,
@@ -790,6 +850,7 @@ function processCheckIn(kode, metode) {
     .then(function (res) {
       processing = false;
       renderPresensiResult(res);
+      showScanResultModal_(res);
       if (res.ok) {
         addOptimisticRecap_(res.nama, res.email);
         // Fire-and-forget: tidak menunggu hasilnya, supaya operator bisa
@@ -798,7 +859,13 @@ function processCheckIn(kode, metode) {
       }
       focusScannerInput_();
     })
-    .catch(function (err) { processing = false; renderPresensiResult({ ok: false, message: err.message || String(err) }); focusScannerInput_(); });
+    .catch(function (err) {
+      processing = false;
+      const res = { ok: false, message: err.message || String(err) };
+      renderPresensiResult(res);
+      showScanResultModal_(res);
+      focusScannerInput_();
+    });
 }
 
 // ---------- CARI NAMA (fallback: tamu lupa email / tidak tahu kode presensi) ----------
@@ -904,14 +971,16 @@ function loadAdmins() {
 function openAdminModal() {
   document.getElementById('admin-email').value = '';
   document.getElementById('admin-nama').value = '';
+  document.getElementById('admin-role').value = 'Admin';
   openModal('modal-admin');
 }
 
 function saveAdmin() {
   const email = document.getElementById('admin-email').value.trim();
   const nama = document.getElementById('admin-nama').value.trim();
+  const role = document.getElementById('admin-role').value;
   if (!email) { showResultModal('warn', 'Belum lengkap', 'Email wajib diisi.'); return; }
-  gsRun('addAdmin', [email, nama], 'Menyimpan admin...')
+  gsRun('addAdmin', [email, nama, role], 'Menyimpan admin...')
     .then(function () { closeModal('modal-admin'); showSuccess('Admin berhasil ditambahkan.'); loadAdmins(); })
     .catch(showErrorModal);
 }
