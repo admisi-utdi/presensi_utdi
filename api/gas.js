@@ -20,6 +20,8 @@
  */
 
 const { OAuth2Client } = require('google-auth-library');
+const https = require('https');
+const { URL } = require('url');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || 'utdi.ac.id').toLowerCase();
@@ -43,37 +45,77 @@ async function verifyGoogleIdToken(idToken) {
  * body request kita (JSON perintahnya) hilang begitu saja. Jadi di sini
  * redirect diikuti manual sambil tetap mengirim ulang method+body yang sama.
  */
+const BROWSER_HEADERS = {
+  'Accept': '*/*',
+  'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+};
+
+/**
+ * Kirim satu request POST/GET pakai modul https bawaan Node (bukan fetch/
+ * undici). Beberapa pengguna melaporkan panggilan server-ke-server dari
+ * platform serverless (Vercel/AWS) ke script.google.com kadang dibalas
+ * halaman "verifikasi" oleh Google alih-alih menjalankan skrip, diduga
+ * karena fingerprint HTTP client fetch modern (undici, HTTP/2, connection
+ * reuse) dikenali berbeda dari browser biasa. https bawaan Node memakai
+ * HTTP/1.1 polos tanpa reuse koneksi, lebih mendekati perilaku browser lama.
+ */
+function rawRequest(targetUrl, method, body) {
+  return new Promise(function (resolve, reject) {
+    const u = new URL(targetUrl);
+    const headers = Object.assign({}, BROWSER_HEADERS);
+    let data = null;
+    if (method === 'POST') {
+      data = Buffer.from(body, 'utf8');
+      headers['Content-Type'] = 'text/plain;charset=utf-8';
+      headers['Content-Length'] = String(data.length);
+    }
+    const req = https.request({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: 443,
+      path: u.pathname + u.search,
+      method: method,
+      headers: headers,
+      agent: new https.Agent({ keepAlive: false })
+    }, function (res) {
+      const chunks = [];
+      res.on('data', function (c) { chunks.push(c); });
+      res.on('end', function () {
+        resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          text: Buffer.concat(chunks).toString('utf8')
+        });
+      });
+    });
+    req.on('error', reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
 async function postToAppsScript(payload) {
   let url = GAS_WEBAPP_URL;
   const body = JSON.stringify(payload);
   const maxHops = 5;
+  let method = 'POST';
+  let sendBody = body;
 
   for (let hop = 0; hop < maxHops; hop++) {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-        'Accept': '*/*',
-        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        // Beberapa permintaan server-ke-server tanpa header seperti browser
-        // sungguhan bisa dianggap mencurigakan oleh Google dan dibalas dengan
-        // halaman verifikasi/HTML alih-alih menjalankan skrip. Header di
-        // bawah ini meniru browser biasa supaya request diperlakukan normal.
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-      },
-      body: body,
-      redirect: 'manual'
-    });
+    const resp = await rawRequest(url, method, method === 'POST' ? sendBody : null);
 
     if (resp.status >= 300 && resp.status < 400) {
-      const loc = resp.headers.get('location');
+      const loc = resp.headers['location'];
       if (!loc) throw new Error('Apps Script membalas redirect tanpa header Location.');
-      url = loc;
+      url = loc.indexOf('http') === 0 ? loc : new URL(loc, url).toString();
+      // Apps Script biasanya redirect ke URL eksekusi yang tetap menerima POST;
+      // tetap kirim ulang method+body yang sama di hop berikutnya.
       continue;
     }
 
-    const text = await resp.text();
-    if (!resp.ok) {
+    const text = resp.text;
+    if (resp.status < 200 || resp.status >= 300) {
       throw new Error('Apps Script membalas status ' + resp.status + ': ' + text.slice(0, 800));
     }
     try {
