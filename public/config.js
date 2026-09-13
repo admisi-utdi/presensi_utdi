@@ -11,4 +11,4 @@
 //    (tambahkan lagi tiap kali ada domain/preview URL baru yang dipakai)
 // 4. Copy "Client ID" yang dihasilkan (formatnya "xxxx.apps.googleusercontent.com")
 //    lalu tempel di bawah ini menggantikan placeholder.
-window.GOOGLE_CLIENT_ID = 'GANTI_DENGAN_CLIENT_ID_GOOGLE_ANDA.apps.googleusercontent.com';
+window.GOOGLE_CLIENT_ID = '574855682295-vj3k3efdods3eft98vu45rsosv0qj9dt.apps.googleusercontent.com';
