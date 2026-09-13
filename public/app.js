@@ -23,6 +23,21 @@ function initGoogleSignIn_() {
     document.getElementById('login-error').hidden = false;
     return;
   }
+  // Script https://accounts.google.com/gsi/client dimuat dengan `async`,
+  // jadi bisa saja belum selesai ter-download saat titik ini dijalankan.
+  // Tunggu sampai window.google benar-benar tersedia (maks ~5 detik).
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+    if (!initGoogleSignIn_._tries) initGoogleSignIn_._tries = 0;
+    initGoogleSignIn_._tries++;
+    if (initGoogleSignIn_._tries > 50) {
+      document.getElementById('login-error').textContent =
+        'Gagal memuat script Google Sign-In. Cek koneksi internet Anda lalu muat ulang halaman.';
+      document.getElementById('login-error').hidden = false;
+      return;
+    }
+    setTimeout(initGoogleSignIn_, 100);
+    return;
+  }
   google.accounts.id.initialize({
     client_id: window.GOOGLE_CLIENT_ID,
     callback: handleCredentialResponse
