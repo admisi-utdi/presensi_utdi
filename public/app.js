@@ -829,11 +829,25 @@ function loadLaporanEventOptions() {
 
 function loadLaporan() {
   const idEvent = document.getElementById('laporan-event-select').value;
+  updateLaporanBanner_(idEvent);
   gsRun('getLogEntries', [idEvent || null], 'Memuat laporan...').then(function (list) {
     laporanEntriesCache_ = list || [];
     populateLaporanPetugasFilter_();
     applyLaporanFilter();
   }).catch(showErrorModal);
+}
+
+function updateLaporanBanner_(idEvent) {
+  const banner = document.getElementById('laporan-event-banner');
+  const e = idEvent ? allEventsCache.find(function (x) { return x.ID_EVENT === idEvent; }) : null;
+  if (!e) { banner.classList.remove('show'); return; }
+  document.getElementById('laporan-eb-name').textContent = e.NAMA_EVENT;
+  const meta = [fmtDate(e.TANGGAL)];
+  if (e.JAM_MULAI) meta.push(e.JAM_MULAI + (e.JAM_SELESAI ? '–' + e.JAM_SELESAI : ''));
+  if (e.LOKASI) meta.push(e.LOKASI);
+  document.getElementById('laporan-eb-meta').textContent = meta.join('  •  ');
+  document.getElementById('laporan-eb-badge').textContent = e.STATUS || '';
+  banner.classList.add('show');
 }
 
 function populateLaporanPetugasFilter_() {
@@ -847,7 +861,10 @@ function populateLaporanPetugasFilter_() {
 
 function applyLaporanFilter() {
   const petugas = document.getElementById('laporan-petugas-select').value;
+  const statusSel = document.getElementById('laporan-status-select');
+  const hanyaBerhasil = !statusSel || statusSel.value !== 'semua';
   let list = laporanEntriesCache_;
+  if (hanyaBerhasil) list = list.filter(function (r) { return /BERHASIL/.test(r.aksi); });
   if (petugas) list = list.filter(function (r) { return r.olehNama === petugas; });
   renderLaporan(list);
 }

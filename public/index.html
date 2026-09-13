@@ -281,7 +281,7 @@
       <div class="page" id="page-laporan">
         <p class="eyebrow">Rekap Aktivitas</p>
         <h1>Laporan</h1>
-        <p class="subtitle">Riwayat setiap presensi (berhasil maupun ditolak), lengkap dengan admin/operator yang memprosesnya — berguna kalau petugas piket bergantian.</p>
+        <p class="subtitle">Riwayat presensi, lengkap dengan admin/operator yang memprosesnya — berguna kalau petugas piket bergantian.</p>
 
         <div class="card">
           <div class="row" style="flex-wrap:wrap;gap:10px;">
@@ -297,7 +297,23 @@
                 <option value="">— Semua Petugas —</option>
               </select>
             </div>
+            <div style="flex:1;min-width:200px;">
+              <label>Status</label>
+              <select id="laporan-status-select" onchange="applyLaporanFilter()">
+                <option value="berhasil">✅ Hanya Berhasil</option>
+                <option value="semua">Semua (termasuk gagal/ditolak)</option>
+              </select>
+            </div>
           </div>
+        </div>
+
+        <div class="event-banner" id="laporan-event-banner">
+          <div>
+            <div class="eb-label">Event Terpilih</div>
+            <div class="eb-name" id="laporan-eb-name">-</div>
+            <div class="eb-meta" id="laporan-eb-meta"></div>
+          </div>
+          <div class="eb-badge" id="laporan-eb-badge"></div>
         </div>
 
         <div class="card">
