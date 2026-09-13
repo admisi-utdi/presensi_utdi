@@ -88,6 +88,7 @@
       <div class="navitem full-admin-only" data-page="events">📅 Kelola Event</div>
       <div class="navitem full-admin-only" data-page="peserta">👥 Kelola Peserta</div>
       <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
+      <div class="navitem full-admin-only" data-page="linkpresensi">🔗 Presensi via Email</div>
       <div class="navitem full-admin-only" data-page="laporan">📋 Laporan</div>
       <div class="navitem full-admin-only" data-page="admin">🔑 Kelola Admin</div>
       <div class="userbox">
@@ -246,6 +247,33 @@
               <div id="presensi-recent-list"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ================= PRESENSI VIA EMAIL (LINK KLIK) ================= -->
+      <div class="page" id="page-linkpresensi">
+        <p class="eyebrow">Backup Acara Online</p>
+        <h1>Presensi via Email (Klik Link)</h1>
+        <p class="subtitle">Metode cadangan khusus acara ONLINE — peserta cukup klik link di email untuk tercatat hadir, tanpa kamera/QR. Sengaja terpisah dari menu "Presensi (Pintu Masuk)" yang dipakai untuk acara tatap muka; TIDAK ada verifikasi kehadiran fisik di sini.</p>
+
+        <div class="card">
+          <label>Pilih Event</label>
+          <select id="linkpresensi-event-select" onchange="loadLinkPresensiList()"></select>
+        </div>
+
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;">Daftar Peserta</h3>
+            <div class="row" style="flex-wrap:wrap;">
+              <button class="btn secondary sm" onclick="loadLinkPresensiList()">🔄 Refresh</button>
+              <button class="btn sm" onclick="kirimSemuaLinkPresensi()">✉ Kirim ke Semua yang Belum</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Peserta</th><th>Status Hadir</th><th>Link Terkirim</th><th></th></tr></thead>
+            <tbody id="linkpresensi-table"></tbody>
+          </table>
+          <p class="empty" id="linkpresensi-empty" style="display:none;">Belum ada peserta di event ini.</p>
         </div>
       </div>
 

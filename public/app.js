@@ -293,6 +293,7 @@ function showPage(page) {
   if (page === 'events') loadEvents();
   if (page === 'peserta') loadEventOptions();
   if (page === 'presensi') { loadPresensiEventOptions(); stopScanner(); focusScannerInput_(); }
+  if (page === 'linkpresensi') loadLinkPresensiEventOptions();
   if (page === 'laporan') loadLaporanEventOptions();
   if (page === 'admin') loadAdmins();
 }
@@ -724,6 +725,90 @@ function addOptimisticRecap_(nama, email, petugas) {
     '<span class="recent-time">' + fmtTime(new Date()) + '</span>';
   listEl.insertBefore(item, listEl.firstChild);
   while (listEl.children.length > 8) listEl.removeChild(listEl.lastChild);
+}
+
+// ---------- PRESENSI VIA EMAIL (LINK KLIK) - backup acara online ----------
+let linkPresensiEventId_ = null;
+let linkPresensiListCache_ = [];
+
+function loadLinkPresensiEventOptions() {
+  gsRun('getAllEvents', [], 'Memuat event...').then(function (list) {
+    allEventsCache = list || [];
+    const sel = document.getElementById('linkpresensi-event-select');
+    const current = sel.value;
+    sel.innerHTML = allEventsCache.map(function (e) { return '<option value="' + e.ID_EVENT + '">' + esc(e.NAMA_EVENT) + ' (' + fmtDate(e.TANGGAL) + ')</option>'; }).join('');
+    if (!allEventsCache.length) {
+      linkPresensiEventId_ = null;
+      document.getElementById('linkpresensi-table').innerHTML = '';
+      document.getElementById('linkpresensi-empty').style.display = 'block';
+      return;
+    }
+    sel.value = current && allEventsCache.some(function (e) { return e.ID_EVENT === current; }) ? current : allEventsCache[0].ID_EVENT;
+    loadLinkPresensiList();
+  }).catch(showErrorModal);
+}
+
+function loadLinkPresensiList() {
+  linkPresensiEventId_ = document.getElementById('linkpresensi-event-select').value;
+  if (!linkPresensiEventId_) return;
+  gsRun('getLinkPresensiList', [linkPresensiEventId_], 'Memuat daftar peserta...').then(function (list) {
+    linkPresensiListCache_ = list || [];
+    renderLinkPresensiList_(linkPresensiListCache_);
+  }).catch(showErrorModal);
+}
+
+function renderLinkPresensiList_(list) {
+  const emptyEl = document.getElementById('linkpresensi-empty');
+  emptyEl.style.display = list.length ? 'none' : 'block';
+  document.getElementById('linkpresensi-table').innerHTML = list.map(function (p, i) {
+    const hadir = p.statusHadir === 'Hadir';
+    const terkirim = p.linkTerkirim;
+    const emailBtnLabel = terkirim ? '↻ Kirim Ulang' : '✉ Kirim Email';
+    const emailBtnClass = terkirim ? 'btn secondary sm' : 'btn sm';
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + avatarChip(p.nama, p.email) + '</td>' +
+      '<td><span class="badge ' + (hadir ? 'hadir' : 'belum') + '">' + esc(p.statusHadir || '-') + (hadir && p.metode ? ' (' + esc(p.metode) + ')' : '') + '</span></td>' +
+      '<td><span class="badge ' + (terkirim ? 'terkirim' : 'belum-kirim') + '">' + (terkirim ? 'Sudah Terkirim' : 'Belum Terkirim') + '</span></td>' +
+      '<td class="row">' +
+        (p.email
+          ? '<button class="' + emailBtnClass + '" onclick="kirimSatuLinkPresensi(\'' + p.idPeserta + '\')">' + emailBtnLabel + '</button>'
+          : '<span style="color:#9ca3af;font-size:12px;">Tanpa email</span>') +
+        '<button class="btn secondary sm" onclick="salinLinkPresensi(' + JSON.stringify(p.url) + ')">📋 Salin Link</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+function kirimSatuLinkPresensi(idPeserta) {
+  gsRun('sendLinkPresensiEmail', [idPeserta], 'Mengirim email...')
+    .then(function () { showSuccess('Link presensi berhasil dikirim.'); loadLinkPresensiList(); })
+    .catch(showErrorModal);
+}
+
+function kirimSemuaLinkPresensi() {
+  if (!linkPresensiEventId_) return;
+  showConfirm('Kirim link presensi ke semua peserta di event ini yang belum dikirimi?', 'Kirim Semua Link Presensi').then(function (ok) {
+    if (!ok) return;
+    gsRun('sendAllLinkPresensiEmails', [linkPresensiEventId_], 'Mengirim email ke semua peserta...')
+      .then(function (r) {
+        showSuccess('Berhasil kirim: ' + r.sukses + '. Gagal: ' + r.gagal + '.');
+        loadLinkPresensiList();
+      })
+      .catch(showErrorModal);
+  });
+}
+
+function salinLinkPresensi(url) {
+  function fallbackCopy() {
+    window.prompt('Salin link berikut secara manual:', url);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () {
+      showSuccess('Link presensi berhasil disalin.');
+    }).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 }
 
 // ---------- LAPORAN ----------
