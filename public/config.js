@@ -12,3 +12,10 @@
 // 4. Copy "Client ID" yang dihasilkan (formatnya "xxxx.apps.googleusercontent.com")
 //    lalu tempel di bawah ini menggantikan placeholder.
 window.GOOGLE_CLIENT_ID = '574855682295-vj3k3efdods3eft98vu45rsosv0qj9dt.apps.googleusercontent.com';
+
+// URL Web App Apps Script (boleh publik, ini bukan rahasia — sama seperti
+// URL "exec" yang dulu dipakai langsung di browser untuk versi lama).
+// Browser sekarang memanggil Apps Script LANGSUNG memakai URL ini (bukan
+// lewat server Vercel lagi), karena panggilan server-ke-server dari Vercel
+// ke script.google.com ternyata sering diblokir Google.
+window.GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwifCBUnoB64eF6rXF92y4jjKjVpTigjZI4TGXnDiRax9SrWxVwAXi7EdzrUd0UjsEaTQ/exec';

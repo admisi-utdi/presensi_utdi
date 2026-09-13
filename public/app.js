@@ -102,15 +102,22 @@ let resultAutoTimer = null;
 
 // ============================================================
 // GENERIC SERVER CALL — dulu lewat google.script.run (RPC bawaan Apps
-// Script), sekarang lewat fetch ke /api/gas (yang meneruskan ke Apps Script
-// di belakang layar, sambil menempelkan idToken untuk diverifikasi server).
+// Script), lalu sempat lewat proxy server Vercel (/api/gas), TAPI panggilan
+// server-ke-server dari Vercel ke script.google.com ternyata sering diblokir
+// Google (dianggap trafik data center mencurigakan). Sekarang browser
+// memanggil Apps Script LANGSUNG (terbukti selalu berhasil di uji coba),
+// dan Apps Script sendiri yang memverifikasi idToken ke server Google
+// (lihat GasApi.gs / doPost -> verifyGoogleIdToken_).
 // gsRun() menambahkan loading overlay otomatis, callGas() tidak (dipakai
 // untuk panggilan "diam-diam" seperti cek sesi atau fire-and-forget).
 // ============================================================
 function callGas(fnName, args) {
-  return fetch('/api/gas', {
+  if (!window.GAS_WEBAPP_URL) {
+    return Promise.reject(new Error('GAS_WEBAPP_URL belum diisi di public/config.js.'));
+  }
+  return fetch(window.GAS_WEBAPP_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ idToken: idToken_, fn: fnName, args: args || [] })
   })
     .then(function (r) { return r.json(); })
