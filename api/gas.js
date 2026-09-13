@@ -53,9 +53,11 @@ async function postToAppsScript(payload) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
-        // Beberapa permintaan server-ke-server tanpa User-Agent seperti browser
+        'Accept': '*/*',
+        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+        // Beberapa permintaan server-ke-server tanpa header seperti browser
         // sungguhan bisa dianggap mencurigakan oleh Google dan dibalas dengan
-        // halaman verifikasi/HTML alih-alih menjalankan skrip. User-Agent di
+        // halaman verifikasi/HTML alih-alih menjalankan skrip. Header di
         // bawah ini meniru browser biasa supaya request diperlakukan normal.
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       },
