@@ -83,6 +83,7 @@ function verifySessionAndEnter_() {
     }
     currentUserEmail_ = info.email;
     currentUserRole_ = info.role || 'Admin';
+    currentUserNama_ = info.namaAdmin || info.email;
     sessionStorage.setItem('sipredi_email', currentUserEmail_);
     document.getElementById('login-screen').hidden = true;
     document.getElementById('app-shell').hidden = false;
@@ -104,6 +105,7 @@ let scanEventId = null;      // event yang dipilih di halaman Presensi
 let html5QrCode = null;
 let currentMode = 'ketik';
 let currentUserRole_ = 'Admin'; // 'Admin' (akses penuh) atau 'Operator' (hanya Presensi/Scan)
+let currentUserNama_ = ''; // nama petugas yang sedang login, dipakai untuk tampilan optimistik sebelum data server dimuat ulang
 
 /**
  * Operator hanya boleh melihat & membuka menu Presensi (Pintu Masuk) — menu
@@ -291,6 +293,7 @@ function showPage(page) {
   if (page === 'events') loadEvents();
   if (page === 'peserta') loadEventOptions();
   if (page === 'presensi') { loadPresensiEventOptions(); stopScanner(); focusScannerInput_(); }
+  if (page === 'laporan') loadLaporanEventOptions();
   if (page === 'admin') loadAdmins();
 }
 
@@ -507,6 +510,7 @@ function renderPeserta(list) {
       '<td><span class="badge aktif">' + esc(eventNameById_(p.ID_EVENT)) + '</span></td>' +
       '<td><code>' + esc(p.KODE_PRESENSI) + '</code></td>' +
       '<td><span class="badge ' + (hadir ? 'hadir' : 'belum') + '">' + p.STATUS_HADIR + '</span></td>' +
+      '<td>' + (hadir ? esc(p.DICATAT_OLEH || '-') : '<span style="color:#9ca3af;">-</span>') + '</td>' +
       '<td><span class="badge ' + (terkirim ? 'terkirim' : 'belum-kirim') + '">' + (terkirim ? 'Sudah Terkirim' : 'Belum Terkirim') + '</span></td>' +
       '<td class="row">' +
         '<button class="' + emailBtnClass + '" onclick="kirimSatuEmail(\'' + p.ID_PESERTA + '\')">' + emailBtnLabel + '</button>' +
@@ -698,12 +702,13 @@ function loadPresensiRecap() {
     }
     listEl.innerHTML = recent.map(function (p) {
       return '<div class="recent-item">' + avatarChip(p.NAMA, p.EMAIL) +
+        (p.DICATAT_OLEH ? '<span class="badge aktif" title="Dicatat oleh">' + esc(p.DICATAT_OLEH) + '</span>' : '') +
         '<span class="recent-time">' + fmtTime(p.WAKTU_HADIR) + '</span></div>';
     }).join('');
   }).catch(showErrorModal);
 }
 
-function addOptimisticRecap_(nama, email) {
+function addOptimisticRecap_(nama, email, petugas) {
   const statsEl = document.getElementById('presensi-recap-stats');
   const nums = statsEl.querySelectorAll('.stat .num');
   if (nums.length >= 2) {
@@ -714,9 +719,76 @@ function addOptimisticRecap_(nama, email) {
   if (listEl.querySelector('.empty')) listEl.innerHTML = '';
   const item = document.createElement('div');
   item.className = 'recent-item';
-  item.innerHTML = avatarChip(nama, email) + '<span class="recent-time">' + fmtTime(new Date()) + '</span>';
+  item.innerHTML = avatarChip(nama, email) +
+    (petugas ? '<span class="badge aktif" title="Dicatat oleh">' + esc(petugas) + '</span>' : '') +
+    '<span class="recent-time">' + fmtTime(new Date()) + '</span>';
   listEl.insertBefore(item, listEl.firstChild);
   while (listEl.children.length > 8) listEl.removeChild(listEl.lastChild);
+}
+
+// ---------- LAPORAN ----------
+let laporanEntriesCache_ = [];
+
+function loadLaporanEventOptions() {
+  gsRun('getAllEvents', [], 'Memuat event...').then(function (list) {
+    allEventsCache = list || [];
+    const sel = document.getElementById('laporan-event-select');
+    const current = sel.value;
+    const optSemua = '<option value="">— Semua Event —</option>';
+    const optEvents = allEventsCache.map(function (e) { return '<option value="' + e.ID_EVENT + '">' + esc(e.NAMA_EVENT) + ' (' + fmtDate(e.TANGGAL) + ')</option>'; }).join('');
+    sel.innerHTML = optSemua + optEvents;
+    sel.value = current;
+    loadLaporan();
+  }).catch(showErrorModal);
+}
+
+function loadLaporan() {
+  const idEvent = document.getElementById('laporan-event-select').value;
+  gsRun('getLogEntries', [idEvent || null], 'Memuat laporan...').then(function (list) {
+    laporanEntriesCache_ = list || [];
+    populateLaporanPetugasFilter_();
+    applyLaporanFilter();
+  }).catch(showErrorModal);
+}
+
+function populateLaporanPetugasFilter_() {
+  const sel = document.getElementById('laporan-petugas-select');
+  const current = sel.value;
+  const names = Array.from(new Set(laporanEntriesCache_.map(function (r) { return r.olehNama; }).filter(Boolean))).sort();
+  sel.innerHTML = '<option value="">— Semua Petugas —</option>' +
+    names.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
+  sel.value = current;
+}
+
+function applyLaporanFilter() {
+  const petugas = document.getElementById('laporan-petugas-select').value;
+  let list = laporanEntriesCache_;
+  if (petugas) list = list.filter(function (r) { return r.olehNama === petugas; });
+  renderLaporan(list);
+}
+
+function renderLaporan(list) {
+  const emptyEl = document.getElementById('laporan-empty');
+  emptyEl.style.display = list.length ? 'none' : 'block';
+  document.getElementById('laporan-table').innerHTML = list.map(function (r, i) {
+    const aksiOk = /BERHASIL/.test(r.aksi);
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + fmtDateTime_(r.timestamp) + '</td>' +
+      '<td>' + esc(r.nama || '-') + '</td>' +
+      '<td>' + (r.namaEvent ? '<span class="badge aktif">' + esc(r.namaEvent) + '</span>' : '-') + '</td>' +
+      '<td><span class="badge ' + (aksiOk ? 'hadir' : 'belum') + '">' + esc(r.aksi || '-') + '</span></td>' +
+      '<td>' + esc(r.metode || '-') + '</td>' +
+      '<td>' + esc(r.olehNama || '-') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function fmtDateTime_(v) {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  return fmtDate(d) + ' ' + fmtTime(d);
 }
 
 function setMode(mode) {
@@ -852,7 +924,7 @@ function processCheckIn(kode, metode) {
       renderPresensiResult(res);
       showScanResultModal_(res);
       if (res.ok) {
-        addOptimisticRecap_(res.nama, res.email);
+        addOptimisticRecap_(res.nama, res.email, res.petugas);
         // Fire-and-forget: tidak menunggu hasilnya, supaya operator bisa
         // langsung lanjut scan berikutnya tanpa menunggu email terkirim dulu.
         if (res.idPeserta) { callGas('kirimKonfirmasiHadirAsync', [res.idPeserta]).catch(function () {}); }
@@ -916,7 +988,7 @@ function submitCariNama(idPeserta, nama) {
         processing = false;
         renderPresensiResult(res);
         if (res.ok) {
-          addOptimisticRecap_(res.nama, res.email);
+          addOptimisticRecap_(res.nama, res.email, res.petugas);
           if (res.idPeserta) { callGas('kirimKonfirmasiHadirAsync', [res.idPeserta]).catch(function () {}); }
           document.getElementById('input-cari-nama').value = '';
           document.getElementById('cari-nama-hasil').innerHTML = '';

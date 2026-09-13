@@ -88,6 +88,7 @@
       <div class="navitem full-admin-only" data-page="events">📅 Kelola Event</div>
       <div class="navitem full-admin-only" data-page="peserta">👥 Kelola Peserta</div>
       <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
+      <div class="navitem full-admin-only" data-page="laporan">📋 Laporan</div>
       <div class="navitem full-admin-only" data-page="admin">🔑 Kelola Admin</div>
       <div class="userbox">
         <strong>Si-PREDI - Sistem Informasi Presensi Digital UTDI</strong>
@@ -164,7 +165,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th style="width:36px;">No</th><th>Peserta</th><th>Event</th><th>Kode</th><th>Status Hadir</th><th>Email Terkirim</th><th></th></tr></thead>
+            <thead><tr><th style="width:36px;">No</th><th>Peserta</th><th>Event</th><th>Kode</th><th>Status Hadir</th><th>Dicatat Oleh</th><th>Email Terkirim</th><th></th></tr></thead>
             <tbody id="peserta-table"></tbody>
           </table>
           <div id="peserta-empty" class="empty" style="display:none;">Belum ada peserta di event ini.</div>
@@ -245,6 +246,42 @@
               <div id="presensi-recent-list"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ================= LAPORAN ================= -->
+      <div class="page" id="page-laporan">
+        <p class="eyebrow">Rekap Aktivitas</p>
+        <h1>Laporan</h1>
+        <p class="subtitle">Riwayat setiap presensi (berhasil maupun ditolak), lengkap dengan admin/operator yang memprosesnya — berguna kalau petugas piket bergantian.</p>
+
+        <div class="card">
+          <div class="row" style="flex-wrap:wrap;gap:10px;">
+            <div style="flex:1;min-width:200px;">
+              <label>Event</label>
+              <select id="laporan-event-select" onchange="loadLaporan()">
+                <option value="">— Semua Event —</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:200px;">
+              <label>Petugas</label>
+              <select id="laporan-petugas-select" onchange="applyLaporanFilter()">
+                <option value="">— Semua Petugas —</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px;">
+            <h3 style="margin:0;">Riwayat Aktivitas</h3>
+            <button class="btn secondary sm" onclick="loadLaporan()">🔄 Refresh</button>
+          </div>
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Waktu</th><th>Nama Peserta</th><th>Event</th><th>Aksi</th><th>Metode</th><th>Petugas</th></tr></thead>
+            <tbody id="laporan-table"></tbody>
+          </table>
+          <p class="empty" id="laporan-empty" style="display:none;">Belum ada aktivitas.</p>
         </div>
       </div>
 
