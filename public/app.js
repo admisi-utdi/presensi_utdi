@@ -441,7 +441,7 @@ function loadEventOptions() {
     const optEvents = allEventsCache.map(function (e) { return '<option value="' + e.ID_EVENT + '">' + esc(e.NAMA_EVENT) + ' (' + fmtDate(e.TANGGAL) + ')</option>'; }).join('');
     sel.innerHTML = optSemua + optEvents;
     if (allEventsCache.length) {
-      currentEventId = allEventsCache[0].ID_EVENT;
+      currentEventId = pilihEventDefault_(allEventsCache);
       sel.value = currentEventId;
       loadPeserta();
     } else {
@@ -450,6 +450,41 @@ function loadEventOptions() {
       document.getElementById('peserta-empty').style.display = 'block';
     }
   }).catch(showErrorModal);
+}
+
+/**
+ * Pilih event DEFAULT yang paling relevan dengan waktu SEKARANG — dipakai supaya
+ * begitu buka menu Kelola Peserta / Presensi / Presensi via Email, event yang
+ * otomatis terpilih adalah yang paling masuk akal secara waktu (bukan sekadar
+ * yang paling terakhir dibuat di sistem, yang bisa keliru kalau ada 2 event di
+ * tanggal yang sama tapi dibuat di waktu berbeda).
+ *
+ * Prioritas:
+ *  1. Event yang SEDANG BERLANGSUNG sekarang (waktu skrg ada di antara JAM_MULAI-JAM_SELESAI
+ *     pada TANGGAL event) — kalau ada beberapa yang bertabrakan begini, ambil salah satu.
+ *  2. Kalau tidak ada yang sedang berlangsung, ambil event dengan TANGGAL (+JAM_MULAI kalau ada)
+ *     yang paling DEKAT dengan sekarang, baik itu sudah lewat atau belum terjadi.
+ *  3. Event tanpa TANGGAL yang valid dilewati dari perhitungan ini (dianggap kurang relevan).
+ */
+function pilihEventDefault_(events) {
+  if (!events || !events.length) return null;
+  const now = new Date();
+  let best = null;
+  let bestScore = Infinity;
+  events.forEach(function (e) {
+    const datePart = String(e.TANGGAL || '').split('T')[0];
+    if (!datePart) return;
+    let start, end;
+    try {
+      start = new Date(datePart + 'T' + (e.JAM_MULAI || '00:00') + ':00');
+      end = e.JAM_SELESAI ? new Date(datePart + 'T' + e.JAM_SELESAI + ':00') : start;
+    } catch (err) { return; }
+    if (isNaN(start.getTime())) return;
+    const sedangBerlangsung = e.JAM_MULAI && e.JAM_SELESAI && now >= start && now <= end;
+    const score = sedangBerlangsung ? -1 : Math.abs(now - start);
+    if (score < bestScore) { bestScore = score; best = e; }
+  });
+  return best ? best.ID_EVENT : events[0].ID_EVENT;
 }
 
 function eventNameById_(id) {
@@ -658,7 +693,8 @@ function loadPresensiEventOptions() {
     presensiEventsCache = list || [];
     const sel = document.getElementById('presensi-event-select');
     sel.innerHTML = presensiEventsCache.map(function (e) { return '<option value="' + e.ID_EVENT + '">' + esc(e.NAMA_EVENT) + ' (' + fmtDate(e.TANGGAL) + ')</option>'; }).join('');
-    scanEventId = presensiEventsCache.length ? presensiEventsCache[0].ID_EVENT : null;
+    scanEventId = pilihEventDefault_(presensiEventsCache);
+    if (scanEventId) sel.value = scanEventId;
     updatePresensiBanner_();
     loadPresensiRecap();
   }).catch(showErrorModal);
@@ -753,18 +789,32 @@ function loadLinkPresensiEventOptions() {
       document.getElementById('linkpresensi-empty').style.display = 'block';
       return;
     }
-    sel.value = current && allEventsCache.some(function (e) { return e.ID_EVENT === current; }) ? current : allEventsCache[0].ID_EVENT;
+    sel.value = current && allEventsCache.some(function (e) { return e.ID_EVENT === current; }) ? current : pilihEventDefault_(allEventsCache);
     loadLinkPresensiList();
   }).catch(showErrorModal);
 }
 
 function loadLinkPresensiList() {
   linkPresensiEventId_ = document.getElementById('linkpresensi-event-select').value;
+  updateLinkPresensiBanner_(linkPresensiEventId_);
   if (!linkPresensiEventId_) return;
   gsRun('getLinkPresensiList', [linkPresensiEventId_], 'Memuat daftar peserta...').then(function (list) {
     linkPresensiListCache_ = list || [];
     renderLinkPresensiList_(linkPresensiListCache_);
   }).catch(showErrorModal);
+}
+
+function updateLinkPresensiBanner_(idEvent) {
+  const banner = document.getElementById('linkpresensi-event-banner');
+  const e = idEvent ? allEventsCache.find(function (x) { return x.ID_EVENT === idEvent; }) : null;
+  if (!e) { banner.classList.remove('show'); return; }
+  document.getElementById('linkpresensi-eb-name').textContent = e.NAMA_EVENT;
+  const meta = [fmtDate(e.TANGGAL)];
+  if (e.JAM_MULAI) meta.push(e.JAM_MULAI + (e.JAM_SELESAI ? '–' + e.JAM_SELESAI : ''));
+  if (e.LOKASI) meta.push(e.LOKASI);
+  document.getElementById('linkpresensi-eb-meta').textContent = meta.join('  •  ');
+  document.getElementById('linkpresensi-eb-badge').textContent = e.STATUS || '';
+  banner.classList.add('show');
 }
 
 function renderLinkPresensiList_(list) {
