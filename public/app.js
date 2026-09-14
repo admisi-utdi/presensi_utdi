@@ -67,12 +67,24 @@ function logout() {
   document.getElementById('login-error').hidden = true;
 }
 
+// Cache sementara hasil dashboard yang sudah ikut terbawa dari getBootstrap()
+// saat awal masuk app, supaya loadDashboard() (dipanggil oleh showPage('dashboard'))
+// tidak perlu round-trip KEDUA ke server untuk data yang sama. Dipakai SEKALI lalu
+// langsung dikosongkan lagi (kunjungan berikutnya ke halaman Dashboard tetap harus
+// ambil data terbaru seperti biasa).
+let bootstrapDashboardCache_ = null;
+
 // Dipanggil saat load pertama (kalau ada token tersimpan) atau tepat setelah login baru.
+// Pakai getBootstrap() (bukan getSessionInfo() + getDashboardSummary() terpisah) supaya
+// cek-login + data halaman pertama cukup SATU round-trip ke Apps Script, bukan dua —
+// tiap round-trip ada biaya verifikasi idToken ke Google yang tidak murah, dan ini
+// dialami SETIAP kali app dibuka/di-refresh.
 function verifySessionAndEnter_() {
   if (!idToken_) { showLoginScreen_(''); return; }
   showLoading('Memeriksa akun...');
-  callGas('getSessionInfo', []).then(function (info) {
+  callGas('getBootstrap', []).then(function (boot) {
     hideLoading();
+    const info = boot && boot.session;
     if (!info || !info.email) {
       showLoginScreen_('Sesi tidak valid, silakan login ulang.');
       return;
@@ -92,7 +104,8 @@ function verifySessionAndEnter_() {
     if (currentUserRole_ === 'Operator') {
       showPage('presensi');
     } else {
-      loadDashboard();
+      if (boot.dashboard) bootstrapDashboardCache_ = boot.dashboard;
+      showPage('dashboard');
     }
   }).catch(function (err) {
     hideLoading();
@@ -303,6 +316,13 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 
 // ---------- DASHBOARD ----------
 function loadDashboard() {
+  // Kalau baru saja masuk app lewat verifySessionAndEnter_(), data dashboard sudah
+  // ikut terbawa dari getBootstrap() — pakai itu saja, tidak perlu round-trip lagi.
+  if (bootstrapDashboardCache_) {
+    renderDashboard(bootstrapDashboardCache_);
+    bootstrapDashboardCache_ = null;
+    return;
+  }
   document.getElementById('dashboard-content').innerHTML = '<p class="empty">Memuat...</p>';
   gsRun('getDashboardSummary', [], 'Memuat dashboard...')
     .then(renderDashboard)
@@ -1003,16 +1023,39 @@ function submitKetik() {
 // membungkus halamannya dalam iframe yang tidak diizinkan Google mengakses
 // kamera sama sekali. Di Vercel halaman ini berdiri sendiri (bukan iframe),
 // jadi getUserMedia() seharusnya berfungsi normal seperti situs web biasa.
+// Library html5-qrcode (~200KB) dulu dimuat lewat <script> biasa di <head>
+// index.html, jadi didownload+dieksekusi di SETIAP kali app dibuka walau
+// menu Mode Scan tidak pernah dipakai (banyak Operator cuma pakai Scan QR
+// fisik / Input Manual). Sekarang baru dimuat on-demand, TEPAT saat tombol
+// Mode Scan pertama kali ditekan — sisa loading awal app jadi lebih ringan.
+let qrLibLoadPromise_ = null;
+function ensureQrLibLoaded_() {
+  if (typeof Html5Qrcode !== 'undefined') return Promise.resolve();
+  if (qrLibLoadPromise_) return qrLibLoadPromise_;
+  qrLibLoadPromise_ = new Promise(function (resolve, reject) {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload = function () { resolve(); };
+    s.onerror = function () { qrLibLoadPromise_ = null; reject(new Error('Gagal memuat library kamera.')); };
+    document.head.appendChild(s);
+  });
+  return qrLibLoadPromise_;
+}
+
 function startScanner() {
   if (html5QrCode) return;
-  html5QrCode = new Html5Qrcode('qr-reader');
-  Html5Qrcode.getCameras().then(function (cams) {
-    if (!cams || !cams.length) { showResultModal('error', 'Kamera tidak ditemukan', 'Pastikan izin kamera sudah diberikan ke browser ini.'); return; }
-    renderCameraSelect_(cams);
-    const sel = document.getElementById('camera-select');
-    const cameraId = (sel && sel.value) ? sel.value : cams[cams.length - 1].id;
-    launchCamera_(cameraId);
-  }).catch(function () { showResultModal('error', 'Kamera gagal diakses', 'Tidak bisa mengakses kamera perangkat ini.'); });
+  ensureQrLibLoaded_().then(function () {
+    html5QrCode = new Html5Qrcode('qr-reader');
+    Html5Qrcode.getCameras().then(function (cams) {
+      if (!cams || !cams.length) { showResultModal('error', 'Kamera tidak ditemukan', 'Pastikan izin kamera sudah diberikan ke browser ini.'); return; }
+      renderCameraSelect_(cams);
+      const sel = document.getElementById('camera-select');
+      const cameraId = (sel && sel.value) ? sel.value : cams[cams.length - 1].id;
+      launchCamera_(cameraId);
+    }).catch(function () { showResultModal('error', 'Kamera gagal diakses', 'Tidak bisa mengakses kamera perangkat ini.'); });
+  }).catch(function (err) {
+    showResultModal('error', 'Kamera gagal diakses', err.message || 'Tidak bisa memuat library kamera.');
+  });
 }
 
 function renderCameraSelect_(cams) {

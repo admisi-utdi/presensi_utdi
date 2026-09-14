@@ -6,7 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Si-PREDI - Sistem Informasi Presensi Digital UTDI</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- html5-qrcode TIDAK dimuat di sini lagi — sekarang dimuat otomatis (on-demand)
+       oleh app.js hanya saat tombol Mode Scan pertama kali ditekan, supaya loading
+       awal app tidak perlu download library kamera (~200KB) kalau tidak dipakai. -->
   <script src="config.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
