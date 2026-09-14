@@ -1204,7 +1204,12 @@ function renderAdminTable_(list) {
   document.getElementById('admin-table').innerHTML = list.map(function (a, i) {
     const aktif = String(a.AKTIF).toLowerCase() === 'ya';
     const role = (a.ROLE ? String(a.ROLE).trim() : '') === 'Operator' ? 'Operator' : 'Admin';
-    const emailJs = JSON.stringify(a.EMAIL);
+    // PENTING: emailJs dibungkus tanda kutip TUNGGAL (bukan JSON.stringify, yang
+    // menghasilkan kutip GANDA) karena attribute HTML onclick="..." di sini sendiri
+    // sudah pakai kutip ganda — kalau argumennya juga kutip ganda, atribut HTML-nya
+    // akan terpotong di tengah jalan dan menghasilkan JavaScript yang rusak (ini
+    // persis penyebab tombol Edit/Hapus sebelumnya tidak berfungsi).
+    const emailJs = "'" + String(a.EMAIL).replace(/'/g, "\\'") + "'";
     return '<tr>' +
       '<td>' + (i + 1) + '</td>' +
       '<td>' + esc(a.EMAIL) + '</td>' +
