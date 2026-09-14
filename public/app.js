@@ -1190,40 +1190,95 @@ function renderPresensiResult(res) {
 }
 
 // ---------- ADMIN ----------
+let adminListCache_ = [];
+let adminEditEmail_ = null; // null = mode Tambah; berisi email = mode Edit (email dikunci)
+
 function loadAdmins() {
   gsRun('getAllAdmins', [], 'Memuat admin...').then(function (list) {
-    list = list || [];
-    document.getElementById('admin-table').innerHTML = list.map(function (a, i) {
-      const aktif = String(a.AKTIF).toLowerCase() === 'ya';
-      return '<tr><td>' + (i + 1) + '</td><td>' + esc(a.EMAIL) + '</td><td>' + esc(a.NAMA) + '</td>' +
-        '<td><span class="badge ' + (aktif ? 'terkirim' : 'belum-kirim') + '">' + (aktif ? 'Aktif' : 'Nonaktif') + '</span></td>' +
-        '<td>' + (aktif ? '<button class="btn danger sm" onclick="nonaktifkanAdmin(\'' + a.EMAIL + '\')">Nonaktifkan</button>' : '') + '</td></tr>';
-    }).join('');
+    adminListCache_ = list || [];
+    renderAdminTable_(adminListCache_);
   }).catch(showErrorModal);
 }
 
-function openAdminModal() {
-  document.getElementById('admin-email').value = '';
-  document.getElementById('admin-nama').value = '';
-  document.getElementById('admin-role').value = 'Admin';
+function renderAdminTable_(list) {
+  document.getElementById('admin-table').innerHTML = list.map(function (a, i) {
+    const aktif = String(a.AKTIF).toLowerCase() === 'ya';
+    const role = (a.ROLE ? String(a.ROLE).trim() : '') === 'Operator' ? 'Operator' : 'Admin';
+    const emailJs = JSON.stringify(a.EMAIL);
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + esc(a.EMAIL) + '</td>' +
+      '<td>' + esc(a.NAMA || '-') + '</td>' +
+      '<td><span class="badge aktif">' + role + '</span></td>' +
+      '<td><span class="badge ' + (aktif ? 'terkirim' : 'belum-kirim') + '">' + (aktif ? 'Aktif' : 'Nonaktif') + '</span></td>' +
+      '<td class="row">' +
+        '<button class="btn secondary sm" onclick="openAdminModal(' + emailJs + ')">✏ Edit</button>' +
+        (aktif
+          ? '<button class="btn secondary sm" onclick="nonaktifkanAdmin(' + emailJs + ')">Nonaktifkan</button>'
+          : '<button class="btn secondary sm" onclick="aktifkanAdmin(' + emailJs + ')">Aktifkan</button>') +
+        '<button class="btn danger sm" onclick="hapusAdmin(' + emailJs + ')">🗑 Hapus</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+/**
+ * Buka modal Tambah/Edit Admin. Tanpa argumen (atau undefined) = mode Tambah
+ * (form kosong, email bisa diisi bebas). Diisi email = mode Edit (email dikunci
+ * karena itu kunci unik baris admin, cuma Nama & Peran yang bisa diubah).
+ */
+function openAdminModal(email) {
+  const admin = email ? adminListCache_.find(function (a) { return a.EMAIL === email; }) : null;
+  adminEditEmail_ = admin ? admin.EMAIL : null;
+
+  document.getElementById('admin-modal-title').textContent = admin ? 'Edit Admin' : 'Tambah Admin';
+  document.getElementById('admin-email').value = admin ? admin.EMAIL : '';
+  document.getElementById('admin-email').disabled = !!admin;
+  document.getElementById('admin-nama').value = admin ? (admin.NAMA || '') : '';
+  document.getElementById('admin-role').value = admin && admin.ROLE === 'Operator' ? 'Operator' : 'Admin';
   openModal('modal-admin');
 }
 
 function saveAdmin() {
-  const email = document.getElementById('admin-email').value.trim();
+  const email = (adminEditEmail_ || document.getElementById('admin-email').value.trim());
   const nama = document.getElementById('admin-nama').value.trim();
   const role = document.getElementById('admin-role').value;
   if (!email) { showResultModal('warn', 'Belum lengkap', 'Email wajib diisi.'); return; }
-  gsRun('addAdmin', [email, nama, role], 'Menyimpan admin...')
-    .then(function () { closeModal('modal-admin'); showSuccess('Admin berhasil ditambahkan.'); loadAdmins(); })
+  const isEdit = !!adminEditEmail_;
+  gsRun('addAdmin', [email, nama, role], isEdit ? 'Menyimpan perubahan...' : 'Menyimpan admin...')
+    .then(function () {
+      closeModal('modal-admin');
+      document.getElementById('admin-email').disabled = false;
+      showSuccess(isEdit ? 'Perubahan admin berhasil disimpan.' : 'Admin berhasil ditambahkan.');
+      loadAdmins();
+    })
     .catch(showErrorModal);
 }
 
 function nonaktifkanAdmin(email) {
-  showConfirm('Nonaktifkan admin ' + email + '?', 'Nonaktifkan Admin').then(function (ok) {
+  showConfirm('Nonaktifkan admin ' + email + '? Akun ini tidak akan bisa login lagi sampai diaktifkan ulang.', 'Nonaktifkan Admin').then(function (ok) {
     if (!ok) return;
     gsRun('removeAdmin', [email], 'Menonaktifkan admin...')
       .then(function () { showSuccess('Admin berhasil dinonaktifkan.'); loadAdmins(); })
+      .catch(showErrorModal);
+  });
+}
+
+function aktifkanAdmin(email) {
+  const admin = adminListCache_.find(function (a) { return a.EMAIL === email; });
+  gsRun('addAdmin', [email, admin ? admin.NAMA : '', admin && admin.ROLE === 'Operator' ? 'Operator' : 'Admin'], 'Mengaktifkan admin...')
+    .then(function () { showSuccess('Admin berhasil diaktifkan.'); loadAdmins(); })
+    .catch(showErrorModal);
+}
+
+function hapusAdmin(email) {
+  showDangerConfirm(
+    'Admin "' + email + '" akan DIHAPUS PERMANEN dari daftar (beda dengan Nonaktifkan — ini tidak bisa dibatalkan). Kalau cuma mau mencabut akses sementara, gunakan tombol "Nonaktifkan" saja.',
+    'Hapus Admin',
+    'HAPUS ADMIN'
+  ).then(function (ok) {
+    if (!ok) return;
+    gsRun('deleteAdmin', [email], 'Menghapus admin...')
+      .then(function () { showSuccess('Admin berhasil dihapus.'); loadAdmins(); })
       .catch(showErrorModal);
   });
 }
