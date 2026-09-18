@@ -90,6 +90,7 @@
       <div class="navitem full-admin-only" data-page="events">📅 Kelola Event</div>
       <div class="navitem full-admin-only" data-page="peserta">👥 Kelola Peserta</div>
       <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
+      <div class="navitem" data-page="belumhadir">🙈 Belum Hadir</div>
       <div class="navitem full-admin-only" data-page="linkpresensi">🔗 Presensi via Email</div>
       <div class="navitem full-admin-only" data-page="laporan">📋 Laporan</div>
       <div class="navitem full-admin-only" data-page="admin">🔑 Kelola Admin</div>
@@ -285,6 +286,42 @@
             <tbody id="linkpresensi-table"></tbody>
           </table>
           <p class="empty" id="linkpresensi-empty" style="display:none;">Belum ada peserta di event ini.</p>
+        </div>
+      </div>
+
+      <!-- ================= BELUM HADIR ================= -->
+      <div class="page" id="page-belumhadir">
+        <p class="eyebrow">Pantau Kehadiran</p>
+        <h1>Belum Hadir</h1>
+        <p class="subtitle">Daftar peserta yang TERDAFTAR di event ini tapi belum tercatat hadir — berguna untuk susulan/reminder saat acara masih berlangsung.</p>
+
+        <div class="card">
+          <label>Pilih Event</label>
+          <select id="belumhadir-event-select" onchange="loadBelumHadir()"></select>
+        </div>
+
+        <div class="event-banner" id="belumhadir-event-banner">
+          <div>
+            <div class="eb-label">Event Aktif</div>
+            <div class="eb-name" id="belumhadir-eb-name">-</div>
+            <div class="eb-meta" id="belumhadir-eb-meta"></div>
+          </div>
+          <div class="eb-badge" id="belumhadir-eb-badge"></div>
+        </div>
+
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;">Peserta Belum Hadir (<span id="belumhadir-count">0</span> dari <span id="belumhadir-total">0</span>)</h3>
+            <div class="row" style="flex-wrap:wrap;">
+              <input type="text" id="belumhadir-search" placeholder="Cari nama/email..." oninput="renderBelumHadir()" style="width:220px;">
+              <button class="btn secondary sm" onclick="loadBelumHadir()">🔄 Refresh</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th style="width:36px;">No</th><th>Peserta</th><th>Email Kode/QR</th></tr></thead>
+            <tbody id="belumhadir-table"></tbody>
+          </table>
+          <p class="empty" id="belumhadir-empty" style="display:none;">Semua peserta di event ini sudah hadir 🎉</p>
         </div>
       </div>
 

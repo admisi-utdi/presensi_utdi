@@ -212,20 +212,43 @@ function closeResultModal() {
 let scannerPausedForModal_ = false;
 
 /**
- * Notifikasi hasil scan yang MENONJOL (modal penuh, harus diklik OK) supaya
- * operator tidak sampai kelewat lihat status sukses/gagal — sebelumnya cuma
- * kotak kecil di bawah kamera yang gampang tidak disadari di layar HP.
- * Kamera dijeda otomatis selama modal terbuka supaya tidak nge-scan lagi
- * sebelum operator menekan OK.
+ * Notifikasi kecil yang muncul-hilang sendiri di pojok layar, TIDAK
+ * menghalangi apa pun dan tidak perlu diklik — dipakai untuk kasus sukses
+ * di Mode Scan supaya operator bisa scan orang berikutnya tanpa jeda
+ * (lihat catatan di showScanResultModal_ soal kenapa modal dulu mengganggu).
+ */
+let toastTimer_ = null;
+function showToast_(type, message) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  if (toastTimer_) clearTimeout(toastTimer_);
+  toastTimer_ = setTimeout(function () { el.classList.remove('show'); }, 1200);
+}
+
+/**
+ * Notifikasi hasil scan. Dulu SEMUA hasil (termasuk sukses) memakai modal
+ * penuh yang harus diklik OK dulu sebelum lanjut — ini terasa sangat
+ * mengganggu saat scan banyak orang berurutan cepat (mis. 100 peserta),
+ * karena operator harus berhenti sejenak dan mengklik OK setiap kali walau
+ * hasilnya sukses. Sekarang:
+ *  - SUKSES: cukup toast kecil ~1.2 detik, kamera TIDAK dijeda, operator
+ *    bisa langsung lanjut scan berikutnya tanpa interaksi apa pun.
+ *  - GAGAL/PERINGATAN (event tidak sesuai, sudah hadir, di luar jadwal, dst):
+ *    tetap pakai modal yang harus diklik OK, karena ini butuh perhatian
+ *    operator (ada kemungkinan orang yang salah/bermasalah berdiri di depan
+ *    kamera) — kamera tetap dijeda otomatis selama modal ini terbuka.
  */
 function showScanResultModal_(res) {
+  if (res.ok) {
+    showToast_('success', '✅ ' + (res.nama || 'Berhasil') + (res.namaEvent ? ' — ' + res.namaEvent : ''));
+    return;
+  }
   if (html5QrCode) {
     try { html5QrCode.pause(true); scannerPausedForModal_ = true; } catch (e) { /* kamera mungkin belum aktif */ }
   }
-  if (res.ok) {
-    showResultModal('success', '✅ ' + (res.nama || 'Berhasil'),
-      (res.namaEvent ? res.namaEvent + ' — ' : '') + 'Presensi tercatat.');
-  } else if (res.duplicateScan) {
+  if (res.duplicateScan) {
     showResultModal('warn', 'Tunggu Sebentar', res.message);
   } else if (res.outsideWindow) {
     showResultModal('warn', 'Belum/Sudah Waktunya', res.message);
@@ -306,6 +329,7 @@ function showPage(page) {
   if (page === 'events') loadEvents();
   if (page === 'peserta') loadEventOptions();
   if (page === 'presensi') { loadPresensiEventOptions(); stopScanner(); focusScannerInput_(); }
+  if (page === 'belumhadir') loadBelumHadirEventOptions();
   if (page === 'linkpresensi') loadLinkPresensiEventOptions();
   if (page === 'laporan') loadLaporanEventOptions();
   if (page === 'admin') loadAdmins();
@@ -791,6 +815,76 @@ function addOptimisticRecap_(nama, email, petugas) {
     '<span class="recent-time">' + fmtTime(new Date()) + '</span>';
   listEl.insertBefore(item, listEl.firstChild);
   while (listEl.children.length > 8) listEl.removeChild(listEl.lastChild);
+}
+
+// ---------- BELUM HADIR ----------
+// Pakai getParticipantsByEvent (endpoint yang sudah ada, dipakai juga oleh
+// Kelola Peserta) — tidak perlu fungsi backend baru, tinggal disaring di sisi
+// client untuk yang STATUS_HADIR-nya masih "Belum Hadir". requireAdmin_ di
+// server (bukan requireFullAdmin_) jadi Operator pun boleh buka menu ini —
+// berguna buat dia sendiri saat memantau siapa yang belum masuk pas acara masih berlangsung.
+let belumHadirListCache_ = [];
+
+function loadBelumHadirEventOptions() {
+  gsRun('getAllEvents', [], 'Memuat event...').then(function (list) {
+    allEventsCache = list || [];
+    const sel = document.getElementById('belumhadir-event-select');
+    const current = sel.value;
+    sel.innerHTML = allEventsCache.map(function (e) { return '<option value="' + e.ID_EVENT + '">' + esc(e.NAMA_EVENT) + ' (' + fmtDate(e.TANGGAL) + ')</option>'; }).join('');
+    if (!allEventsCache.length) {
+      document.getElementById('belumhadir-table').innerHTML = '';
+      document.getElementById('belumhadir-empty').style.display = 'block';
+      document.getElementById('belumhadir-count').textContent = '0';
+      document.getElementById('belumhadir-total').textContent = '0';
+      return;
+    }
+    sel.value = current && allEventsCache.some(function (e) { return e.ID_EVENT === current; }) ? current : pilihEventDefault_(allEventsCache);
+    loadBelumHadir();
+  }).catch(showErrorModal);
+}
+
+function loadBelumHadir() {
+  const idEvent = document.getElementById('belumhadir-event-select').value;
+  updateBelumHadirBanner_(idEvent);
+  document.getElementById('belumhadir-search').value = '';
+  if (!idEvent) return;
+  gsRun('getParticipantsByEvent', [idEvent], 'Memuat peserta...').then(function (list) {
+    list = list || [];
+    document.getElementById('belumhadir-total').textContent = list.length;
+    belumHadirListCache_ = list.filter(function (p) { return p.STATUS_HADIR !== 'Hadir'; });
+    renderBelumHadir();
+  }).catch(showErrorModal);
+}
+
+function updateBelumHadirBanner_(idEvent) {
+  const banner = document.getElementById('belumhadir-event-banner');
+  const e = idEvent ? allEventsCache.find(function (x) { return x.ID_EVENT === idEvent; }) : null;
+  if (!e) { banner.classList.remove('show'); return; }
+  document.getElementById('belumhadir-eb-name').textContent = e.NAMA_EVENT;
+  const meta = [fmtDate(e.TANGGAL)];
+  if (e.JAM_MULAI) meta.push(e.JAM_MULAI + (e.JAM_SELESAI ? '–' + e.JAM_SELESAI : ''));
+  if (e.LOKASI) meta.push(e.LOKASI);
+  document.getElementById('belumhadir-eb-meta').textContent = meta.join('  •  ');
+  document.getElementById('belumhadir-eb-badge').textContent = e.STATUS || '';
+  banner.classList.add('show');
+}
+
+function renderBelumHadir() {
+  const kw = document.getElementById('belumhadir-search').value.trim().toLowerCase();
+  const list = kw
+    ? belumHadirListCache_.filter(function (p) {
+        return (p.NAMA || '').toLowerCase().indexOf(kw) !== -1 || (p.EMAIL || '').toLowerCase().indexOf(kw) !== -1;
+      })
+    : belumHadirListCache_;
+  document.getElementById('belumhadir-count').textContent = belumHadirListCache_.length;
+  document.getElementById('belumhadir-empty').style.display = list.length ? 'none' : 'block';
+  document.getElementById('belumhadir-table').innerHTML = list.map(function (p, i) {
+    return '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + avatarChip(p.NAMA, p.EMAIL) + '</td>' +
+      '<td><span class="badge ' + (p.EMAIL_TERKIRIM === 'Ya' ? 'terkirim' : 'belum-kirim') + '">' + (p.EMAIL_TERKIRIM === 'Ya' ? 'Sudah Terkirim' : 'Belum Terkirim') + '</span></td>' +
+      '</tr>';
+  }).join('');
 }
 
 // ---------- PRESENSI VIA EMAIL (LINK KLIK) - backup acara online ----------
