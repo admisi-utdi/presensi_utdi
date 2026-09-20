@@ -1387,12 +1387,32 @@ function onEmailMassalPaste_() {
   applyEmailMassalImport_(document.getElementById('emailmassal-paste').value);
 }
 
+/**
+ * Unduh contoh file .csv dengan format yang benar (header di baris pertama)
+ * supaya admin tidak perlu menebak-nebak susunan kolomnya sendiri. Ini
+ * murni download di browser (bikin Blob lalu klik <a> sementara) — TIDAK
+ * lewat server sama sekali, jadi tidak makan kuota/permintaan apa pun.
+ */
+function unduhFormatEmailMassal_() {
+  const csv = 'NAMA,EMAIL,KELAS\nBudi Santoso,budi@utdi.ac.id,TI-1\nAni Wijaya,ani@utdi.ac.id,TI-2\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'format-email-massal.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function previewEmailMassal_() {
   const subjek = document.getElementById('emailmassal-subjek').value.trim();
   const isi = document.getElementById('emailmassal-isi').value.trim();
+  const sensitif = document.getElementById('emailmassal-sensitif').checked;
   if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
   const sample = emailMassalRows_.length ? emailMassalRows_[0] : { NAMA: 'Contoh Nama', EMAIL: 'contoh@utdi.ac.id' };
-  gsRun('previewEmailMassal', [subjek, isi.replace(/\n/g, '<br>'), sample], 'Menyiapkan pratinjau...')
+  gsRun('previewEmailMassal', [subjek, isi.replace(/\n/g, '<br>'), sample, sensitif], 'Menyiapkan pratinjau...')
     .then(function (res) {
       document.getElementById('emailmassal-preview-subjek').textContent = 'Subjek: ' + res.subjek;
       document.getElementById('emailmassal-preview-body').innerHTML = res.html;
@@ -1412,17 +1432,18 @@ function mulaiKirimEmailMassal_() {
   const namaJob = document.getElementById('emailmassal-namajob').value.trim();
   const subjek = document.getElementById('emailmassal-subjek').value.trim();
   const isi = document.getElementById('emailmassal-isi').value.trim();
+  const sensitif = document.getElementById('emailmassal-sensitif').checked;
   if (!emailMassalRows_.length) { showResultModal('warn', 'Belum lengkap', 'Impor daftar penerima dulu.'); return; }
   if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
 
-  showConfirm(
-    'Kirim email ke ' + emailMassalRows_.length + ' penerima dengan subjek "' + subjek + '"?',
-    'Mulai Kirim Email Massal'
-  ).then(function (ok) {
+  const pesanKonfirmasi = 'Kirim email ke ' + emailMassalRows_.length + ' penerima dengan subjek "' + subjek + '"?' +
+    (sensitif ? ' PERHATIAN: job ini ditandai berisi info sensitif (kredensial) — pastikan data USER/PASSWORD di file impor sudah benar sebelum lanjut, karena email yang sudah terkirim tidak bisa ditarik kembali.' : '');
+
+  showConfirm(pesanKonfirmasi, 'Mulai Kirim Email Massal').then(function (ok) {
     if (!ok) return;
     emailMassalSending_ = true;
     document.getElementById('emailmassal-kirim-btn').disabled = true;
-    gsRun('createEmailMassalJob', [namaJob, subjek, isi.replace(/\n/g, '<br>'), emailMassalRows_], 'Mendaftarkan job...')
+    gsRun('createEmailMassalJob', [namaJob, subjek, isi.replace(/\n/g, '<br>'), emailMassalRows_, sensitif], 'Mendaftarkan job...')
       .then(function (r) {
         showToast_('success', 'Job dibuat, mulai mengirim...');
         lanjutkanKirimEmailMassal_(r.idJob, r.total);

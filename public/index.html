@@ -342,6 +342,9 @@
         <div class="card">
           <h3 style="margin-top:0;">1. Impor Daftar Penerima</h3>
           <p class="subtitle" style="margin-top:-6px;">Upload file .csv, atau tempel langsung (baris pertama = nama kolom, wajib ada kolom EMAIL). Kalau ada nama yang mengandung koma, gunakan format tab (salin dari Excel/Google Sheets langsung).</p>
+          <div class="row" style="margin-bottom:10px;">
+            <button class="btn secondary sm" onclick="unduhFormatEmailMassal_()">⬇ Unduh Format Contoh (.csv)</button>
+          </div>
           <input type="file" id="emailmassal-file" accept=".csv,.txt" onchange="onEmailMassalFile_(event)">
           <label style="margin-top:10px;">atau tempel di sini</label>
           <textarea id="emailmassal-paste" rows="5" placeholder="NAMA,EMAIL,KELAS&#10;Budi Santoso,budi@utdi.ac.id,TI-1&#10;Ani Wijaya,ani@utdi.ac.id,TI-2" oninput="onEmailMassalPaste_()"></textarea>
@@ -357,6 +360,11 @@
           <label>Isi Email (HTML sederhana boleh, mis. &lt;p&gt;, &lt;b&gt;, &lt;br&gt;)</label>
           <textarea id="emailmassal-isi" rows="8" placeholder="Halo {{NAMA}},&#10;&#10;Kami mengundang Anda untuk hadir pada acara..."></textarea>
           <p class="subtitle" id="emailmassal-placeholder-hint" style="margin-top:6px;">Kolom yang tersedia dari data impor: -</p>
+          <label style="margin-top:14px;display:flex;align-items:center;gap:8px;font-weight:normal;">
+            <input type="checkbox" id="emailmassal-sensitif" style="width:auto;">
+            🔒 Email ini berisi info sensitif (mis. User &amp; Password Akademik) — tambahkan catatan keamanan otomatis
+          </label>
+          <p class="field-hint">Kalau dicentang, sistem menambahkan kotak peringatan "Jangan diteruskan, segera ganti password" di email. Tips: tambahkan kolom USER dan PASSWORD saat impor data, lalu pakai <code>{{USER}}</code> dan <code>{{PASSWORD}}</code> di isi email — sistem otomatis menggantinya per penerima seperti kolom lain.</p>
           <div class="row" style="margin-top:10px;flex-wrap:wrap;">
             <button class="btn secondary sm" onclick="previewEmailMassal_()">👁 Pratinjau</button>
           </div>
