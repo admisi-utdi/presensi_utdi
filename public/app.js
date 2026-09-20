@@ -1409,10 +1409,9 @@ function unduhFormatEmailMassal_() {
 function previewEmailMassal_() {
   const subjek = document.getElementById('emailmassal-subjek').value.trim();
   const isi = document.getElementById('emailmassal-isi').value.trim();
-  const sensitif = document.getElementById('emailmassal-sensitif').checked;
   if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
   const sample = emailMassalRows_.length ? emailMassalRows_[0] : { NAMA: 'Contoh Nama', EMAIL: 'contoh@utdi.ac.id' };
-  gsRun('previewEmailMassal', [subjek, isi.replace(/\n/g, '<br>'), sample, sensitif], 'Menyiapkan pratinjau...')
+  gsRun('previewEmailMassal', [subjek, isi.replace(/\n/g, '<br>'), sample], 'Menyiapkan pratinjau...')
     .then(function (res) {
       document.getElementById('emailmassal-preview-subjek').textContent = 'Subjek: ' + res.subjek;
       document.getElementById('emailmassal-preview-body').innerHTML = res.html;
@@ -1432,18 +1431,17 @@ function mulaiKirimEmailMassal_() {
   const namaJob = document.getElementById('emailmassal-namajob').value.trim();
   const subjek = document.getElementById('emailmassal-subjek').value.trim();
   const isi = document.getElementById('emailmassal-isi').value.trim();
-  const sensitif = document.getElementById('emailmassal-sensitif').checked;
   if (!emailMassalRows_.length) { showResultModal('warn', 'Belum lengkap', 'Impor daftar penerima dulu.'); return; }
   if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
 
-  const pesanKonfirmasi = 'Kirim email ke ' + emailMassalRows_.length + ' penerima dengan subjek "' + subjek + '"?' +
-    (sensitif ? ' PERHATIAN: job ini ditandai berisi info sensitif (kredensial) — pastikan data USER/PASSWORD di file impor sudah benar sebelum lanjut, karena email yang sudah terkirim tidak bisa ditarik kembali.' : '');
-
-  showConfirm(pesanKonfirmasi, 'Mulai Kirim Email Massal').then(function (ok) {
+  showConfirm(
+    'Kirim email ke ' + emailMassalRows_.length + ' penerima dengan subjek "' + subjek + '"?',
+    'Mulai Kirim Email Massal'
+  ).then(function (ok) {
     if (!ok) return;
     emailMassalSending_ = true;
     document.getElementById('emailmassal-kirim-btn').disabled = true;
-    gsRun('createEmailMassalJob', [namaJob, subjek, isi.replace(/\n/g, '<br>'), emailMassalRows_, sensitif], 'Mendaftarkan job...')
+    gsRun('createEmailMassalJob', [namaJob, subjek, isi.replace(/\n/g, '<br>'), emailMassalRows_], 'Mendaftarkan job...')
       .then(function (r) {
         showToast_('success', 'Job dibuat, mulai mengirim...');
         lanjutkanKirimEmailMassal_(r.idJob, r.total);
