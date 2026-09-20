@@ -92,6 +92,7 @@
       <div class="navitem" data-page="presensi">✅ Presensi (Pintu Masuk)</div>
       <div class="navitem" data-page="belumhadir">🙈 Belum Hadir</div>
       <div class="navitem full-admin-only" data-page="linkpresensi">🔗 Presensi via Email</div>
+      <div class="navitem full-admin-only" data-page="emailmassal">📧 Email Massal</div>
       <div class="navitem full-admin-only" data-page="laporan">📋 Laporan</div>
       <div class="navitem full-admin-only" data-page="admin">🔑 Kelola Admin</div>
       <div class="userbox">
@@ -325,6 +326,66 @@
         </div>
       </div>
 
+      <!-- ================= EMAIL MASSAL (MAIL MERGE) ================= -->
+      <div class="page" id="page-emailmassal">
+        <p class="eyebrow">Broadcast Email</p>
+        <h1>Email Massal</h1>
+        <p class="subtitle">Kirim email ke banyak penerima sekaligus, isinya dipersonalisasi per orang (mis. {{NAMA}}) seperti Mail Merge. Aman dipakai domain @utdi.ac.id, dikirim bertahap otomatis supaya tidak melewati kuota harian Gmail.</p>
+
+        <div class="card" id="emailmassal-quota-card">
+          <div class="row-between" style="flex-wrap:wrap;gap:10px;">
+            <div><strong>Sisa Kuota Email Hari Ini:</strong> <span id="emailmassal-quota">-</span></div>
+            <button class="btn secondary sm" onclick="loadEmailQuota_()">🔄 Cek Kuota</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">1. Impor Daftar Penerima</h3>
+          <p class="subtitle" style="margin-top:-6px;">Upload file .csv, atau tempel langsung (baris pertama = nama kolom, wajib ada kolom EMAIL). Kalau ada nama yang mengandung koma, gunakan format tab (salin dari Excel/Google Sheets langsung).</p>
+          <input type="file" id="emailmassal-file" accept=".csv,.txt" onchange="onEmailMassalFile_(event)">
+          <label style="margin-top:10px;">atau tempel di sini</label>
+          <textarea id="emailmassal-paste" rows="5" placeholder="NAMA,EMAIL,KELAS&#10;Budi Santoso,budi@utdi.ac.id,TI-1&#10;Ani Wijaya,ani@utdi.ac.id,TI-2" oninput="onEmailMassalPaste_()"></textarea>
+          <p id="emailmassal-import-info" class="subtitle" style="margin-top:8px;">Belum ada data diimpor.</p>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">2. Isi Email</h3>
+          <label>Nama Job (untuk riwayat)</label>
+          <input type="text" id="emailmassal-namajob" placeholder="mis. Undangan Wisuda Periode Genap 2026">
+          <label>Subjek</label>
+          <input type="text" id="emailmassal-subjek" placeholder="mis. Undangan untuk {{NAMA}}">
+          <label>Isi Email (HTML sederhana boleh, mis. &lt;p&gt;, &lt;b&gt;, &lt;br&gt;)</label>
+          <textarea id="emailmassal-isi" rows="8" placeholder="Halo {{NAMA}},&#10;&#10;Kami mengundang Anda untuk hadir pada acara..."></textarea>
+          <p class="subtitle" id="emailmassal-placeholder-hint" style="margin-top:6px;">Kolom yang tersedia dari data impor: -</p>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;">
+            <button class="btn secondary sm" onclick="previewEmailMassal_()">👁 Pratinjau</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">3. Kirim</h3>
+          <div id="emailmassal-progress-wrap" style="display:none;margin-bottom:14px;">
+            <div style="background:#eee;border-radius:999px;height:10px;overflow:hidden;">
+              <div id="emailmassal-progress-bar" style="background:#14302a;height:100%;width:0%;transition:width .3s;"></div>
+            </div>
+            <p class="subtitle" id="emailmassal-progress-text" style="margin-top:6px;">-</p>
+          </div>
+          <button class="btn" id="emailmassal-kirim-btn" onclick="mulaiKirimEmailMassal_()">🚀 Mulai Kirim</button>
+        </div>
+
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;">Riwayat Job</h3>
+            <button class="btn secondary sm" onclick="loadEmailMassalJobs()">🔄 Refresh</button>
+          </div>
+          <table>
+            <thead><tr><th>Nama Job</th><th>Total</th><th>Terkirim</th><th>Gagal</th><th>Status</th><th></th></tr></thead>
+            <tbody id="emailmassal-jobs-table"></tbody>
+          </table>
+          <p class="empty" id="emailmassal-jobs-empty" style="display:none;">Belum ada riwayat pengiriman.</p>
+        </div>
+      </div>
+
       <!-- ================= LAPORAN ================= -->
       <div class="page" id="page-laporan">
         <p class="eyebrow">Rekap Aktivitas</p>
@@ -487,6 +548,17 @@
       <div class="row" style="margin-top:18px;justify-content:flex-end;">
         <button class="btn secondary" onclick="closeModal('modal-admin')">Batal</button>
         <button class="btn" onclick="saveAdmin()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modal-emailmassal-preview">
+    <div class="modal" style="width:640px;">
+      <h3>Pratinjau Email</h3>
+      <p class="subtitle" id="emailmassal-preview-subjek" style="margin-top:-6px;"></p>
+      <div id="emailmassal-preview-body" style="border:1px solid var(--border);border-radius:10px;padding:14px;max-height:60vh;overflow-y:auto;background:#f5f5f5;"></div>
+      <div class="row" style="margin-top:18px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeModal('modal-emailmassal-preview')">Tutup</button>
       </div>
     </div>
   </div>

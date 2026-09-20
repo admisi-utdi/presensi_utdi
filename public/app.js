@@ -331,6 +331,7 @@ function showPage(page) {
   if (page === 'presensi') { loadPresensiEventOptions(); stopScanner(); focusScannerInput_(); }
   if (page === 'belumhadir') loadBelumHadirEventOptions();
   if (page === 'linkpresensi') loadLinkPresensiEventOptions();
+  if (page === 'emailmassal') { loadEmailQuota_(); loadEmailMassalJobs(); }
   if (page === 'laporan') loadLaporanEventOptions();
   if (page === 'admin') loadAdmins();
 }
@@ -1324,6 +1325,205 @@ function renderPresensiResult(res) {
   }
   html += '</div>';
   document.getElementById('presensi-result').innerHTML = html;
+}
+
+// ---------- EMAIL MASSAL (MAIL MERGE) ----------
+// Alur: (1) impor daftar penerima dari file/paste -> parse jadi array of
+// object di sisi browser (tidak perlu backend untuk ini), (2) isi Subjek +
+// Isi dengan placeholder {{KOLOM}}, (3) createEmailMassalJob() sekali untuk
+// mendaftarkan job + seluruh penerima (status awal "Menunggu"), (4) panggil
+// kirimEmailMassalBatch() BERULANG dari sini sampai selesai/kuota habis -
+// supaya progres bisa ditampilkan real-time dan tidak kena limit waktu
+// eksekusi Apps Script (~6 menit) untuk daftar yang panjang.
+let emailMassalRows_ = [];
+let emailMassalHeaders_ = [];
+let emailMassalSending_ = false;
+
+function parseImportText_(text) {
+  const lines = String(text || '').split(/\r\n|\r|\n/).filter(function (l) { return l.trim() !== ''; });
+  if (!lines.length) return { headers: [], rows: [] };
+  const delim = (lines[0].split('\t').length > lines[0].split(',').length) ? '\t' : ',';
+  const headers = lines[0].split(delim).map(function (h) { return h.trim(); });
+  const rows = lines.slice(1).map(function (line) {
+    const cols = line.split(delim);
+    const obj = {};
+    headers.forEach(function (h, i) { obj[h] = (cols[i] !== undefined ? cols[i] : '').trim(); });
+    return obj;
+  });
+  return { headers: headers, rows: rows };
+}
+
+function applyEmailMassalImport_(text) {
+  const parsed = parseImportText_(text);
+  emailMassalHeaders_ = parsed.headers;
+  emailMassalRows_ = parsed.rows;
+  const infoEl = document.getElementById('emailmassal-import-info');
+  const hintEl = document.getElementById('emailmassal-placeholder-hint');
+  const adaEmail = emailMassalHeaders_.some(function (h) { return h.toUpperCase() === 'EMAIL'; });
+  if (!emailMassalRows_.length) {
+    infoEl.textContent = 'Belum ada data diimpor.';
+    hintEl.textContent = 'Kolom yang tersedia dari data impor: -';
+    return;
+  }
+  infoEl.innerHTML = (adaEmail ? '✅ ' : '⚠️ Tidak ada kolom EMAIL terdeteksi — ') +
+    emailMassalRows_.length + ' baris data terbaca. Kolom: ' + emailMassalHeaders_.join(', ');
+  hintEl.innerHTML = 'Kolom yang tersedia dari data impor: ' +
+    emailMassalHeaders_.map(function (h) { return '<code>{{' + esc(h) + '}}</code>'; }).join(' ');
+}
+
+function onEmailMassalFile_(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    document.getElementById('emailmassal-paste').value = String(e.target.result || '');
+    applyEmailMassalImport_(e.target.result);
+  };
+  reader.onerror = function () { showResultModal('error', 'Gagal', 'Tidak bisa membaca file ini.'); };
+  reader.readAsText(file);
+}
+
+function onEmailMassalPaste_() {
+  applyEmailMassalImport_(document.getElementById('emailmassal-paste').value);
+}
+
+function previewEmailMassal_() {
+  const subjek = document.getElementById('emailmassal-subjek').value.trim();
+  const isi = document.getElementById('emailmassal-isi').value.trim();
+  if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
+  const sample = emailMassalRows_.length ? emailMassalRows_[0] : { NAMA: 'Contoh Nama', EMAIL: 'contoh@utdi.ac.id' };
+  gsRun('previewEmailMassal', [subjek, isi.replace(/\n/g, '<br>'), sample], 'Menyiapkan pratinjau...')
+    .then(function (res) {
+      document.getElementById('emailmassal-preview-subjek').textContent = 'Subjek: ' + res.subjek;
+      document.getElementById('emailmassal-preview-body').innerHTML = res.html;
+      openModal('modal-emailmassal-preview');
+    })
+    .catch(showErrorModal);
+}
+
+function loadEmailQuota_() {
+  gsRun('getEmailQuotaInfo', [], 'Mengecek kuota...').then(function (r) {
+    document.getElementById('emailmassal-quota').textContent = r.sisaKuota + ' email';
+  }).catch(showErrorModal);
+}
+
+function mulaiKirimEmailMassal_() {
+  if (emailMassalSending_) return;
+  const namaJob = document.getElementById('emailmassal-namajob').value.trim();
+  const subjek = document.getElementById('emailmassal-subjek').value.trim();
+  const isi = document.getElementById('emailmassal-isi').value.trim();
+  if (!emailMassalRows_.length) { showResultModal('warn', 'Belum lengkap', 'Impor daftar penerima dulu.'); return; }
+  if (!subjek || !isi) { showResultModal('warn', 'Belum lengkap', 'Isi Subjek dan Isi Email dulu.'); return; }
+
+  showConfirm(
+    'Kirim email ke ' + emailMassalRows_.length + ' penerima dengan subjek "' + subjek + '"?',
+    'Mulai Kirim Email Massal'
+  ).then(function (ok) {
+    if (!ok) return;
+    emailMassalSending_ = true;
+    document.getElementById('emailmassal-kirim-btn').disabled = true;
+    gsRun('createEmailMassalJob', [namaJob, subjek, isi.replace(/\n/g, '<br>'), emailMassalRows_], 'Mendaftarkan job...')
+      .then(function (r) {
+        showToast_('success', 'Job dibuat, mulai mengirim...');
+        lanjutkanKirimEmailMassal_(r.idJob, r.total);
+      })
+      .catch(function (err) {
+        emailMassalSending_ = false;
+        document.getElementById('emailmassal-kirim-btn').disabled = false;
+        showErrorModal(err);
+      });
+  });
+}
+
+/**
+ * Loop pengiriman per-batch — dipanggil pertama kali dari mulaiKirimEmailMassal_()
+ * dan juga dipakai untuk MELANJUTKAN job lama dari tabel Riwayat Job (tombol
+ * "Lanjutkan"), makanya `total` dibiarkan opsional (kalau tidak tahu, dihitung
+ * ulang dari respons batch pertama).
+ */
+function lanjutkanKirimEmailMassal_(idJob, total) {
+  emailMassalSending_ = true;
+  document.getElementById('emailmassal-kirim-btn').disabled = true;
+  document.getElementById('emailmassal-progress-wrap').style.display = 'block';
+
+  function tick() {
+    // Pakai callGas (bukan gsRun) supaya TIDAK memicu overlay "Memproses..."
+    // berkedip-kedip di setiap batch — progres cukup ditunjukkan lewat progress
+    // bar di halaman ini sendiri.
+    callGas('kirimEmailMassalBatch', [idJob, 20]).then(function (r) {
+      const totalAll = r.total || total || 1;
+      const pct = Math.round(((r.totalTerkirim + r.totalGagal) / totalAll) * 100);
+      document.getElementById('emailmassal-progress-bar').style.width = pct + '%';
+      document.getElementById('emailmassal-progress-text').textContent =
+        r.totalTerkirim + ' terkirim, ' + r.totalGagal + ' gagal, ' + r.sisa + ' menunggu (dari ' + totalAll + ' total).';
+
+      if (r.kuotaHabis) {
+        emailMassalSending_ = false;
+        document.getElementById('emailmassal-kirim-btn').disabled = false;
+        showResultModal('warn', 'Kuota Harian Habis',
+          'Kuota kirim email hari ini sudah habis. Sisa ' + r.sisa + ' penerima belum terkirim — lanjutkan besok lewat menu Riwayat Job (tombol "Lanjutkan").');
+        loadEmailMassalJobs();
+        return;
+      }
+      if (r.selesai) {
+        emailMassalSending_ = false;
+        document.getElementById('emailmassal-kirim-btn').disabled = false;
+        showSuccess('Selesai! ' + r.totalTerkirim + ' terkirim, ' + r.totalGagal + ' gagal dari ' + totalAll + ' penerima.');
+        loadEmailMassalJobs();
+        return;
+      }
+      tick(); // masih ada sisa & kuota masih ada -> lanjut batch berikutnya
+    }).catch(function (err) {
+      emailMassalSending_ = false;
+      document.getElementById('emailmassal-kirim-btn').disabled = false;
+      showErrorModal(err);
+      loadEmailMassalJobs();
+    });
+  }
+  tick();
+}
+
+function loadEmailMassalJobs() {
+  callGas('getEmailMassalJobs', []).then(function (list) {
+    list = list || [];
+    document.getElementById('emailmassal-jobs-empty').style.display = list.length ? 'none' : 'block';
+    document.getElementById('emailmassal-jobs-table').innerHTML = list.map(function (j) {
+      const cls = j.STATUS_JOB === 'Selesai' ? 'terkirim' : (j.STATUS_JOB === 'Berjalan' ? 'aktif' : 'belum-kirim');
+      const jobJs = "'" + String(j.ID_JOB).replace(/'/g, "\\'") + "'";
+      const bisaLanjut = j.STATUS_JOB !== 'Selesai';
+      return '<tr>' +
+        '<td>' + esc(j.NAMA_JOB) + '</td>' +
+        '<td>' + j.TOTAL + '</td>' +
+        '<td>' + j.TERKIRIM + '</td>' +
+        '<td>' + j.GAGAL + '</td>' +
+        '<td><span class="badge ' + cls + '">' + esc(j.STATUS_JOB) + '</span></td>' +
+        '<td class="row">' +
+          (bisaLanjut ? '<button class="btn sm" onclick="lanjutkanKirimEmailMassal_(' + jobJs + ', ' + j.TOTAL + ')">▶ Lanjutkan</button>' : '') +
+          (j.GAGAL > 0 ? '<button class="btn secondary sm" onclick="retryEmailMassalGagal_(' + jobJs + ')">↻ Ulangi yang Gagal</button>' : '') +
+          '<button class="btn danger sm" onclick="hapusEmailMassalJob_(' + jobJs + ')">🗑 Hapus</button>' +
+        '</td></tr>';
+    }).join('');
+  }).catch(showErrorModal);
+}
+
+function retryEmailMassalGagal_(idJob) {
+  gsRun('retryEmailMassalGagal', [idJob], 'Menyiapkan ulang...').then(function () {
+    showSuccess('Baris yang gagal sudah disiapkan ulang — klik "Lanjutkan" untuk kirim ulang.');
+    loadEmailMassalJobs();
+  }).catch(showErrorModal);
+}
+
+function hapusEmailMassalJob_(idJob) {
+  showDangerConfirm(
+    'Hapus riwayat job ini beserta seluruh datanya? Email yang SUDAH terkirim tidak bisa ditarik kembali, ini hanya menghapus catatannya.',
+    'Hapus Job Email Massal', 'HAPUS'
+  ).then(function (ok) {
+    if (!ok) return;
+    gsRun('deleteEmailMassalJob', [idJob], 'Menghapus...').then(function () {
+      showSuccess('Job berhasil dihapus.');
+      loadEmailMassalJobs();
+    }).catch(showErrorModal);
+  });
 }
 
 // ---------- ADMIN ----------
